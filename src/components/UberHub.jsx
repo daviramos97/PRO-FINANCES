@@ -321,8 +321,8 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
 
   // METAS DINÂMICAS E ALVO BRUTO
   const hoje = new Date();
-  const comecoSemana = startOfWeek(hoje, { weekStartsOn: 0 }); // Domingo
-  const fimSemana = endOfWeek(hoje, { weekStartsOn: 0 }); // Sábado
+  const comecoSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Segunda
+  const fimSemana = endOfWeek(hoje, { weekStartsOn: 1 }); // Domingo
   
   const lucroSemanaAtual = uberLogs.reduce((acc, log) => {
     const dataLog = parseISO(log.data);
@@ -456,7 +456,12 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
             </div>
             
             <div className="flex-1 border-l border-gray-100 pl-6 flex flex-col justify-center">
-              <h3 className="text-xs font-semibold uppercase text-gray-400 mb-4">Progresso da Semana Atual</h3>
+              <h3 className="text-xs font-semibold uppercase text-gray-400 mb-4 flex items-center">
+                Progresso da Semana Atual
+                <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md normal-case font-medium text-[10px] tracking-normal">
+                  {format(comecoSemana, 'dd/MM')} a {format(fimSemana, 'dd/MM')}
+                </span>
+              </h3>
               <div className="flex justify-between items-end mb-2">
                 <span className="text-3xl font-light text-gray-800">{formatCurrency(lucroSemanaAtual)}</span>
                 <span className="text-sm font-semibold text-gray-500">{percentualSemana.toFixed(1)}%</span>
