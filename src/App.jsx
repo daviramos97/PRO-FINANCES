@@ -408,17 +408,17 @@ export default function App() {
             <LayoutDashboard className="w-5 h-5 mr-4 opacity-70" />
             <span className="font-medium text-sm tracking-wide">Dashboard</span>
           </button>
-          <button onClick={() => setCurrentPage('payables')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'payables' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
-            <List className="w-5 h-5 mr-4 opacity-70" />
-            <span className="font-medium text-sm tracking-wide">Contas a Pagar</span>
+          <button onClick={() => setCurrentPage('uber')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'uber' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+            <Car className="w-5 h-5 mr-4 opacity-70" />
+            <span className="font-medium text-sm tracking-wide">Uber Hub</span>
           </button>
           <button onClick={() => setCurrentPage('incomes')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'incomes' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
             <TrendingUp className="w-5 h-5 mr-4 opacity-70" />
             <span className="font-medium text-sm tracking-wide">Receitas</span>
           </button>
-          <button onClick={() => setCurrentPage('uber')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'uber' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
-            <Car className="w-5 h-5 mr-4 opacity-70" />
-            <span className="font-medium text-sm tracking-wide">Uber Hub</span>
+          <button onClick={() => setCurrentPage('payables')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'payables' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+            <List className="w-5 h-5 mr-4 opacity-70" />
+            <span className="font-medium text-sm tracking-wide">Contas a Pagar</span>
           </button>
           <button onClick={() => setCurrentPage('fixed')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'fixed' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
             <Calendar className="w-5 h-5 mr-4 opacity-70" />
