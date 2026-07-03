@@ -594,7 +594,10 @@ export default function App() {
           {currentPage === 'payables' && (
             <div className="space-y-6 animate-fade-in">
               <div className="flex justify-between items-center mb-6">
-                <p className="text-gray-500 font-light">Gerencie suas despesas pendentes e pagas do mês.</p>
+                <div>
+                  <p className="text-gray-500 font-light">Gerencie suas despesas pendentes e pagas do mês.</p>
+                  <p className="text-2xl font-bold text-[#A35C5C] mt-1">Total: {formatCurrency(despesas.reduce((acc, d) => acc + d.valor, 0))}</p>
+                </div>
                 <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
               </div>
               <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
