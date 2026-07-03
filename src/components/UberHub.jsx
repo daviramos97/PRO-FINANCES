@@ -321,8 +321,17 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
 
   // METAS DINÂMICAS E ALVO BRUTO
   const hoje = new Date();
-  const comecoSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Segunda
-  const fimSemana = endOfWeek(hoje, { weekStartsOn: 1 }); // Domingo
+  const rawComecoSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Segunda
+  const rawFimSemana = endOfWeek(hoje, { weekStartsOn: 1 }); // Domingo
+  const comecoMes = startOfMonth(hoje);
+  const fimMes = endOfMonth(hoje);
+
+  // Restringe a semana ao mês atual
+  const comecoSemana = rawComecoSemana < comecoMes ? comecoMes : rawComecoSemana;
+  const fimSemana = rawFimSemana > fimMes ? fimMes : rawFimSemana;
+  
+  const diasNaSemanaAtual = Math.round((fimSemana - comecoSemana) / (1000 * 60 * 60 * 24)) + 1;
+  const metaUberSemanalProporcional = metaUberSemanal > 0 ? (metaUberSemanal / 7) * diasNaSemanaAtual : 0;
   
   const lucroSemanaAtual = uberLogs.reduce((acc, log) => {
     const dataLog = parseISO(log.data);
@@ -332,7 +341,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
     return acc;
   }, 0);
   
-  const percentualSemana = metaUberSemanal > 0 ? Math.min((lucroSemanaAtual / metaUberSemanal) * 100, 100) : 100;
+  const percentualSemana = metaUberSemanalProporcional > 0 ? Math.min((lucroSemanaAtual / metaUberSemanalProporcional) * 100, 100) : 100;
   const percGasolina = metrics.totalBruto > 0 ? (metrics.totalCombustivel / metrics.totalBruto) : 0;
   const alvoBrutoDiario = metaUberDiaria > 0 ? (metaUberDiaria / (1 - percGasolina)) : 0;
 
@@ -471,7 +480,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
               </div>
               <div className="flex justify-between text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
                 <span>R$ 0,00</span>
-                <span>{metaUberSemanal > 0 ? formatCurrency(metaUberSemanal) : 'Meta Batida'}</span>
+                <span>{metaUberSemanalProporcional > 0 ? formatCurrency(metaUberSemanalProporcional) : 'Meta Batida'}</span>
               </div>
             </div>
           </div>
