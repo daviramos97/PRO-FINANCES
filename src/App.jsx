@@ -24,7 +24,7 @@ export default function App() {
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
   const [contasFixas, setContasFixas] = useState([]);
   const [settings, setSettings] = useState({
-    meta_faturamento_pessoal: '5000', meta_mes_uber: '2500', meta_hora_uber: '35', meta_km_uber: '2', responsaveis: 'Davi, Larissa', categorias_despesas: 'Moradia, Alimentação, Carro, Educação, Lazer, Outros'
+    meta_faturamento_pessoal: '5000', meta_mes_uber: '2500', meta_hora_uber: '35', meta_km_uber: '2', jornada_semanal_uber: '5', responsaveis: 'Davi, Larissa', categorias_despesas: 'Moradia, Alimentação, Carro, Educação, Lazer, Outros'
   });
   
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -309,6 +309,32 @@ export default function App() {
 
   const metaPessoal = parseFloat(settings.meta_faturamento_pessoal) || 5000;
   const metaUber = parseFloat(settings.meta_mes_uber) || 2500;
+
+  // Cálculos Dinâmicos Uber
+  const jornadaSemanalUber = parseInt(settings.jornada_semanal_uber) || 5;
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  
+  let metaUberSemanalDinamica = 0;
+  let metaUberDiariaDinamica = 0;
+  
+  if (filterMonth === mesAtual) {
+    const ultimoDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+    const diasRestantesNoMes = ultimoDiaDoMes - hoje.getDate() + 1; // Inclui o dia de hoje
+    const semanasRestantes = diasRestantesNoMes / 7;
+    const faltaFaturarUber = Math.max(metaUber - uberLucroMes, 0);
+    
+    if (semanasRestantes > 0) {
+      metaUberSemanalDinamica = faltaFaturarUber / semanasRestantes;
+      metaUberDiariaDinamica = metaUberSemanalDinamica / jornadaSemanalUber;
+    }
+  } else {
+    const [anoStr, mesStr] = filterMonth.split('-');
+    const diasNoMes = new Date(parseInt(anoStr), parseInt(mesStr), 0).getDate();
+    const semanasNoMes = diasNoMes / 7;
+    metaUberSemanalDinamica = metaUber / semanasNoMes;
+    metaUberDiariaDinamica = metaUberSemanalDinamica / jornadaSemanalUber;
+  }
   
   const zeroAZeroProgress = despesasTotaisMes > 0 ? Math.min((receitasTotais / despesasTotaisMes) * 100, 100) : 100;
 
@@ -518,17 +544,29 @@ export default function App() {
                 </div>
 
                 {/* Meta Mensal Uber Hub */}
-                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center relative">
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col relative">
                   <h3 className="text-lg font-medium text-gray-800 mb-1 w-full text-left">Progresso Uber Hub</h3>
                   <p className="text-sm text-gray-400 mb-4 w-full text-left">Meta: {formatCurrency(metaUber)}</p>
-                  <div className="w-32 h-32 relative">
-                    <Doughnut data={uberDonut} options={{ cutout: '75%', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
-                    <div className="absolute inset-0 flex items-center justify-center flex-col">
-                      <span className="text-sm font-bold text-gray-800">{Math.min((uberLucroMes/metaUber)*100, 100).toFixed(0)}%</span>
+                  <div className="flex-1 flex flex-col items-center justify-center">
+                    <div className="w-32 h-32 relative mb-2">
+                      <Doughnut data={uberDonut} options={{ cutout: '75%', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
+                      <div className="absolute inset-0 flex items-center justify-center flex-col">
+                        <span className="text-sm font-bold text-gray-800">{Math.min((uberLucroMes/metaUber)*100, 100).toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 text-center mb-4">
+                      Realizado: {formatCurrency(uberLucroMes)}
                     </div>
                   </div>
-                  <div className="mt-4 text-xs text-gray-500 text-center">
-                    Realizado: {formatCurrency(uberLucroMes)}
+                  <div className="w-full mt-auto flex justify-between items-end border-t border-gray-100 pt-3">
+                    <div className="text-left">
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Meta Diária</p>
+                      <p className={`font-medium text-sm ${metaUberDiariaDinamica > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberDiariaDinamica > 0 ? formatCurrency(metaUberDiariaDinamica) : 'Batida!'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Meta Semanal</p>
+                      <p className={`font-medium text-sm ${metaUberSemanalDinamica > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberSemanalDinamica > 0 ? formatCurrency(metaUberSemanalDinamica) : 'Batida!'}</p>
+                    </div>
                   </div>
                 </div>
 
@@ -584,6 +622,9 @@ export default function App() {
                 formatCurrency={formatCurrency} 
                 globalMonth={filterMonth}
                 settings={settings}
+                metaUberDiaria={metaUberDiariaDinamica}
+                metaUberSemanal={metaUberSemanalDinamica}
+                lucroMes={uberLucroMes}
               />
             </div>
           )}
@@ -897,6 +938,10 @@ export default function App() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Meta por Km (R$/km)</label>
                           <input type="number" step="0.01" value={settings.meta_km_uber} onChange={e => setSettings({...settings, meta_km_uber: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Jornada Semanal (Dias)</label>
+                          <input type="number" min="1" max="7" value={settings.jornada_semanal_uber} onChange={e => setSettings({...settings, jornada_semanal_uber: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
                         </div>
                       </div>
                     </div>

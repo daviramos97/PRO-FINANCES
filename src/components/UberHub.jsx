@@ -9,7 +9,7 @@ import {
 import { startOfMonth, endOfMonth, eachDayOfInterval, format, parseISO, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-export default function UberHub({ fetchGlobalData, colors, formatCurrency, globalMonth, settings }) {
+export default function UberHub({ fetchGlobalData, colors, formatCurrency, globalMonth, settings, metaUberDiaria, metaUberSemanal, lucroMes }) {
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('uberhub_activeTab') || 'performance');
   
   useEffect(() => {
@@ -406,6 +406,50 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
           </div>
 
           {/* GRÁFICOS RECHARTS */}
+          {/* NOVO: Acompanhamento de Metas Dinâmicas */}
+          <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm mb-6 flex flex-col md:flex-row gap-6">
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center">
+                <Trophy className="w-4 h-4 mr-2 text-[#C87941]" />
+                Sua Jornada: {settings?.jornada_semanal_uber || 5} dias por semana
+              </h3>
+              <p className="text-xs text-gray-500 mb-6">Com base no que você já faturou este mês e nos dias que faltam para acabar o mês, recalculamos diariamente o quanto você precisa fazer para bater a meta.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Novo Alvo Semanal</span>
+                    <span className={`font-bold ${metaUberSemanal > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberSemanal > 0 ? formatCurrency(metaUberSemanal) : 'Batida!'}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Novo Alvo Diário</span>
+                    <span className={`font-bold ${metaUberDiaria > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberDiaria > 0 ? formatCurrency(metaUberDiaria) : 'Batida!'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex-1 h-48 border-l border-gray-100 pl-6">
+              <h3 className="text-xs font-semibold uppercase text-gray-400 mb-4">Sua Média Atual vs Meta Diária</h3>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  { name: 'Sua Média/Dia', valor: new Set(uberLogs.map(l => l.data)).size > 0 ? metrics.totalLucro / new Set(uberLogs.map(l => l.data)).size : 0 },
+                  { name: 'Meta Diária Necessária', valor: metaUberDiaria || 0 }
+                ]}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
+                  <Tooltip cursor={{fill: '#f9fafb'}} formatter={(value) => formatCurrency(value)} />
+                  <Bar dataKey="valor" radius={[4,4,0,0]}>
+                    <Cell fill="#7A8B76" />
+                    <Cell fill="#C87941" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
             {/* 1. BarChart: Lucro Semana */}
