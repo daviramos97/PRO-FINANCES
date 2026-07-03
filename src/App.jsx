@@ -229,8 +229,16 @@ export default function App() {
     setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', categoria: 'Outros' });
     fetchData();
   };
-  const handleDeleteFixa = async (id) => {
-    await fetch(`/api/contas_fixas/${id}`, { method: 'DELETE' });
+  const handleDeleteFixa = (id) => {
+    setFixaToDelete(id);
+    setIsDeleteFixaModalOpen(true);
+  };
+
+  const confirmDeleteFixa = async () => {
+    if(!fixaToDelete) return;
+    await fetch(`/api/contas_fixas/${fixaToDelete}`, { method: 'DELETE' });
+    setIsDeleteFixaModalOpen(false);
+    setFixaToDelete(null);
     fetchData();
   };
 
@@ -814,6 +822,20 @@ export default function App() {
               )}
               <button type="submit" className={`w-full py-3 text-white ${colors.action} rounded`}>Salvar</button>
             </form>
+          </div>
+        </div>
+      )}
+      {isDeleteFixaModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl p-6 animate-fade-in-up">
+            <h2 className="text-xl font-light text-gray-800 mb-2">Excluir Conta Fixa</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Tem certeza que deseja excluir esta conta? Isso também apagará as projeções pendentes desta conta nos próximos meses. (As contas já pagas serão mantidas no histórico).
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => { setIsDeleteFixaModalOpen(false); setFixaToDelete(null); }} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-md font-medium hover:bg-gray-200 transition">Cancelar</button>
+              <button onClick={confirmDeleteFixa} className="flex-1 py-3 bg-red-500 text-white rounded-md font-medium hover:bg-red-600 transition">Excluir</button>
+            </div>
           </div>
         </div>
       )}
