@@ -49,6 +49,8 @@ export default function App() {
 
   const [isNewFixaModal, setIsNewFixaModal] = useState(false);
   const [newFixaForm, setNewFixaForm] = useState({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO' });
+  const [isDeleteFixaModalOpen, setIsDeleteFixaModalOpen] = useState(false);
+  const [fixaToDelete, setFixaToDelete] = useState(null);
 
   const fetchData = () => {
     fetch(`/api/dashboard/${filterMonth}`).then(res => res.json()).then(setDashboard).catch(console.error);
