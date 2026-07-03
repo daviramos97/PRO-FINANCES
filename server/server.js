@@ -22,21 +22,46 @@ async function projectFixedBillsForMonth(mesAno) {
   const fixas = await db.all('SELECT * FROM contas_fixas');
   
   for (const fixa of fixas) {
-    // Verifica se já foi gerada neste mês
-    const jaGerou = await db.get(
-      'SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?',
-      [fixa.id, mesAno]
-    );
-    
-    if (!jaGerou) {
-      // Cria a despesa pendente
-      const vencimentoStr = `${ano}-${mes}-${fixa.dia_vencimento.toString().padStart(2, '0')}`;
+    if (fixa.tipo_valor === 'PARCELAMENTO') {
+      if (!fixa.mes_inicio || !fixa.parcelas_totais) continue;
       
-      await db.run(
-        `INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) 
-         VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
-        [`${fixa.nome} (${mes}/${ano})`, fixa.valor_estimado, vencimentoStr, 'Conta Fixa', fixa.id, mesAno]
+      const [startAno, startMes] = fixa.mes_inicio.split('-').map(Number);
+      const [currAno, currMes] = mesAno.split('-').map(Number);
+      
+      const monthDiff = (currAno - startAno) * 12 + (currMes - startMes);
+      const parcelaAtual = monthDiff + 1;
+      
+      if (parcelaAtual <= 0 || parcelaAtual > fixa.parcelas_totais) {
+        continue;
+      }
+      
+      const jaGerou = await db.get(
+        'SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?',
+        [fixa.id, mesAno]
       );
+      
+      if (!jaGerou) {
+        const vencimentoStr = `${currAno}-${String(currMes).padStart(2, '0')}-${fixa.dia_vencimento.toString().padStart(2, '0')}`;
+        await db.run(
+          `INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) 
+           VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
+          [`${fixa.nome} (Parcela ${parcelaAtual}/${fixa.parcelas_totais})`, fixa.valor_estimado, vencimentoStr, fixa.categoria || 'Outros', fixa.id, mesAno]
+        );
+      }
+    } else {
+      const jaGerou = await db.get(
+        'SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?',
+        [fixa.id, mesAno]
+      );
+      
+      if (!jaGerou) {
+        const vencimentoStr = `${ano}-${mes}-${fixa.dia_vencimento.toString().padStart(2, '0')}`;
+        await db.run(
+          `INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) 
+           VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
+          [`${fixa.nome} (${mes}/${ano})`, fixa.valor_estimado, vencimentoStr, fixa.categoria || 'Outros', fixa.id, mesAno]
+        );
+      }
     }
   }
 }
@@ -115,15 +140,25 @@ app.post('/api/despesas', async (req, res) => {
 
 app.put('/api/despesas/:id', async (req, res) => {
   try {
-    const { status, valor, data_pagamento } = req.body; // pode receber valor final ajustado
+    const { status, valor, data_pagamento, nome, vencimento, categoria, forma_pagamento } = req.body;
     const db = await openDb();
-    await db.run(
-      'UPDATE despesas SET status = ?, valor = ? WHERE id = ?',
-      [status, valor, req.params.id]
-    );
+
+    // Check if we are doing a full edit or just a status change
+    if (nome !== undefined && vencimento !== undefined) {
+      await db.run(
+        'UPDATE despesas SET nome = ?, valor = ?, vencimento = ?, categoria = ?, forma_pagamento = ? WHERE id = ?',
+        [nome, valor, vencimento, categoria, forma_pagamento, req.params.id]
+      );
+    } else {
+      await db.run(
+        'UPDATE despesas SET status = ?, valor = ?, data_pagamento = ? WHERE id = ?',
+        [status, valor, data_pagamento, req.params.id]
+      );
+    }
+    
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Erro' });
+    res.status(500).json({ error: 'Erro ao atualizar despesa' });
   }
 });
 
@@ -161,9 +196,20 @@ app.get('/api/receitas/:mes_ano', async (req, res) => {
 
 app.post('/api/receitas', async (req, res) => {
   try {
-    const { nome, valor, data, status = 'recebido' } = req.body;
+    const { nome, valor, data, status = 'recebido', responsavel = 'Davi' } = req.body;
     const db = await openDb();
-    await db.run('INSERT INTO receitas (nome, valor, data, status) VALUES (?, ?, ?, ?)', [nome, valor, data, status]);
+    await db.run('INSERT INTO receitas (nome, valor, data, status, responsavel) VALUES (?, ?, ?, ?, ?)', [nome, valor, data, status, responsavel]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.put('/api/receitas/:id', async (req, res) => {
+  try {
+    const { nome, valor, data, responsavel = 'Davi' } = req.body;
+    const db = await openDb();
+    await db.run('UPDATE receitas SET nome = ?, valor = ?, data = ?, responsavel = ? WHERE id = ?', [nome, valor, data, responsavel, req.params.id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro' });
@@ -181,11 +227,20 @@ app.delete('/api/receitas/:id', async (req, res) => {
 });
 
 // Uber Logs CRUD
-app.get('/api/uber_logs/:mes_ano', async (req, res) => {
+app.get('/api/uber_logs', async (req, res) => {
   try {
-    const mesAno = req.params.mes_ano;
+    const { mes_ano, start, end } = req.query;
     const db = await openDb();
-    const logs = await db.all("SELECT * FROM uber_logs WHERE data LIKE ? ORDER BY data DESC", [`${mesAno}%`]);
+    let logs = [];
+    
+    if (start && end) {
+      logs = await db.all("SELECT * FROM uber_logs WHERE data >= ? AND data <= ? ORDER BY data DESC", [start, end]);
+    } else if (mes_ano) {
+      logs = await db.all("SELECT * FROM uber_logs WHERE data LIKE ? ORDER BY data DESC", [`${mes_ano}%`]);
+    } else {
+      logs = await db.all("SELECT * FROM uber_logs ORDER BY data DESC");
+    }
+    
     res.json(logs);
   } catch (error) {
     res.status(500).json({ error: 'Erro' });
@@ -215,6 +270,39 @@ app.post('/api/uber_logs', async (req, res) => {
   }
 });
 
+app.put('/api/uber_logs/:id', async (req, res) => {
+  try {
+    const { data, aplicativo, corridas, km, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
+    
+    const bruto = parseFloat(valor_bruto) || 0;
+    const bns = parseFloat(bonus) || 0;
+    const grj = parseFloat(gorjeta) || 0;
+    const comb = parseFloat(combustivel) || 0;
+    const manu = parseFloat(manutencao) || 0;
+    
+    const lucro_liquido = (bruto + bns + grj) - (comb + manu);
+
+    const db = await openDb();
+    await db.run(
+      'UPDATE uber_logs SET data = ?, aplicativo = ?, corridas = ?, km = ?, tempo_online = ?, valor_bruto = ?, combustivel = ?, manutencao = ?, bonus = ?, gorjeta = ?, lucro_liquido = ? WHERE id = ?',
+      [data, aplicativo, corridas, km, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido, req.params.id]
+    );
+    res.json({ success: true, lucro_liquido });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao editar jornada' });
+  }
+});
+
+app.delete('/api/uber_logs/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    await db.run('DELETE FROM uber_logs WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao excluir jornada' });
+  }
+});
+
 // ==========================================
 // CONTAS FIXAS
 // ==========================================
@@ -230,11 +318,25 @@ app.get('/api/contas_fixas', async (req, res) => {
 
 app.post('/api/contas_fixas', async (req, res) => {
   try {
-    const { nome, valor_estimado, dia_vencimento, tipo_valor = 'FIXO' } = req.body;
+    const { nome, valor_estimado, dia_vencimento, tipo_valor = 'FIXO', parcelas_totais = null, mes_inicio = null, categoria = 'Outros' } = req.body;
     const db = await openDb();
     await db.run(
-      'INSERT INTO contas_fixas (nome, valor_estimado, dia_vencimento, tipo_valor) VALUES (?, ?, ?, ?)',
-      [nome, valor_estimado, dia_vencimento, tipo_valor]
+      'INSERT INTO contas_fixas (nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais, mes_inicio, categoria) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais, mes_inicio, categoria]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.put('/api/contas_fixas/:id', async (req, res) => {
+  try {
+    const { nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais = null, mes_inicio = null, categoria = 'Outros' } = req.body;
+    const db = await openDb();
+    await db.run(
+      'UPDATE contas_fixas SET nome = ?, valor_estimado = ?, dia_vencimento = ?, tipo_valor = ?, parcelas_totais = ?, mes_inicio = ?, categoria = ? WHERE id = ?',
+      [nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais, mes_inicio, categoria, req.params.id]
     );
     res.json({ success: true });
   } catch (error) {

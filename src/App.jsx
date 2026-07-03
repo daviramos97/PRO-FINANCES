@@ -3,11 +3,16 @@ import {
   Wallet, LayoutDashboard, Car, AlertTriangle, Settings, Calendar, 
   ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft
 } from 'lucide-react';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import 'chart.js/auto';
+import UberHub from './components/UberHub';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState(() => localStorage.getItem('profinances_currentPage') || 'dashboard');
+
+  useEffect(() => {
+    localStorage.setItem('profinances_currentPage', currentPage);
+  }, [currentPage]);
   
   // Filtro de Mês Global
   const today = new Date();
@@ -18,7 +23,18 @@ export default function App() {
   const [despesas, setDespesas] = useState([]);
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
   const [contasFixas, setContasFixas] = useState([]);
-  const [uberLogs, setUberLogs] = useState([]);
+  const [settings, setSettings] = useState({
+    meta_faturamento_pessoal: '5000', meta_mes_uber: '2500', meta_hora_uber: '35', meta_km_uber: '2', responsaveis: 'Davi, Larissa', categorias_despesas: 'Moradia, Alimentação, Carro, Educação, Lazer, Outros'
+  });
+  
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('geral');
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
+  };
   
   // Modais Customizados
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -34,26 +50,22 @@ export default function App() {
   const [isNewFixaModal, setIsNewFixaModal] = useState(false);
   const [newFixaForm, setNewFixaForm] = useState({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO' });
 
-  const [isNewUberModal, setIsNewUberModal] = useState(false);
-  const [newUberForm, setNewUberForm] = useState({
-    data: new Date().toISOString().split('T')[0],
-    aplicativo: 'Uber', corridas: '', km: '', tempo_online: '00:00',
-    valor_bruto: '', combustivel: '', manutencao: '', bonus: '', gorjeta: ''
-  });
-
   const fetchData = () => {
     fetch(`/api/dashboard/${filterMonth}`).then(res => res.json()).then(setDashboard).catch(console.error);
     fetch(`/api/despesas/${filterMonth}`).then(res => res.json()).then(setDespesas).catch(console.error);
     fetch(`/api/receitas/${filterMonth}`).then(res => res.json()).then(setReceitas).catch(console.error);
     fetch(`/api/contas_fixas`).then(res => res.json()).then(setContasFixas).catch(console.error);
-    fetch(`/api/uber_logs/${filterMonth}`).then(res => res.json()).then(setUberLogs).catch(console.error);
+    fetch(`/api/settings`).then(res => res.json()).then(data => {
+      if(Object.keys(data).length > 0) setSettings(data);
+    }).catch(console.error);
   };
-
   useEffect(() => {
     fetchData();
   }, [filterMonth]);
 
   // Ações - Despesas
+  const [editingDespesaId, setEditingDespesaId] = useState(null);
+  
   const handleDeleteDespesa = async (id) => {
     await fetch(`/api/despesas/${id}`, { method: 'DELETE' });
     fetchData();
@@ -76,26 +88,95 @@ export default function App() {
     fetchData();
   };
 
+  const payDespesaInstant = async (despesa) => {
+    await fetch(`/api/despesas/${despesa.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'pago', valor: despesa.valor, data_pagamento: new Date().toISOString().split('T')[0] })
+    });
+    fetchData();
+  };
+
+  const unpayDespesa = async (despesa) => {
+    await fetch(`/api/despesas/${despesa.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'pendente', valor: despesa.valor, data_pagamento: null })
+    });
+    fetchData();
+  };
+
+  const openNewDespesaModal = () => {
+    setEditingDespesaId(null);
+    setNewDespesaForm({ nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: 'Outros', forma_pagamento: 'Dinheiro' });
+    setIsNewDespesaModal(true);
+  };
+
+  const openEditDespesa = (despesa) => {
+    setEditingDespesaId(despesa.id);
+    setNewDespesaForm({ 
+      nome: despesa.nome, 
+      valor: despesa.valor, 
+      vencimento: despesa.vencimento, 
+      categoria: despesa.categoria, 
+      forma_pagamento: despesa.forma_pagamento 
+    });
+    setIsNewDespesaModal(true);
+  };
+
   const handleCreateDespesa = async (e) => {
     e.preventDefault();
-    await fetch('/api/despesas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newDespesaForm)
-    });
+    if(editingDespesaId) {
+      await fetch(`/api/despesas/${editingDespesaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDespesaForm)
+      });
+      setEditingDespesaId(null);
+    } else {
+      await fetch('/api/despesas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDespesaForm)
+      });
+    }
     setIsNewDespesaModal(false);
     setNewDespesaForm({ nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: 'Outros', forma_pagamento: 'Dinheiro' });
     fetchData();
   };
 
   // Ações - Receitas
+  const [editingReceitaId, setEditingReceitaId] = useState(null);
+
+  const openNewReceitaModal = () => {
+    setEditingReceitaId(null);
+    const firstResponsavel = settings.responsaveis ? settings.responsaveis.split(',')[0].trim() : 'Davi';
+    setNewReceitaForm({ nome: '', valor: '', data: new Date().toISOString().split('T')[0], responsavel: firstResponsavel });
+    setIsNewReceitaModal(true);
+  };
+
+  const openEditReceita = (receita) => {
+    setEditingReceitaId(receita.id);
+    setNewReceitaForm({ nome: receita.nome, valor: receita.valor, data: receita.data, responsavel: receita.responsavel });
+    setIsNewReceitaModal(true);
+  };
+
   const handleCreateReceita = async (e) => {
     e.preventDefault();
-    await fetch('/api/receitas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newReceitaForm)
-    });
+    if(editingReceitaId) {
+      await fetch(`/api/receitas/${editingReceitaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newReceitaForm)
+      });
+      setEditingReceitaId(null);
+    } else {
+      await fetch('/api/receitas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newReceitaForm)
+      });
+    }
     setIsNewReceitaModal(false);
     setNewReceitaForm({ nome: '', valor: '', data: new Date().toISOString().split('T')[0] });
     fetchData();
@@ -106,15 +187,46 @@ export default function App() {
   };
 
   // Ações - Fixas
+  const [editingFixaId, setEditingFixaId] = useState(null);
+
+  const openNewFixaModal = () => {
+    setEditingFixaId(null);
+    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', parcelas_totais: '', mes_inicio: filterMonth, categoria: 'Outros' });
+    setIsNewFixaModal(true);
+  };
+
+  const openEditFixa = (fixa) => {
+    setEditingFixaId(fixa.id);
+    setNewFixaForm({ 
+      nome: fixa.nome, 
+      valor_estimado: fixa.valor_estimado, 
+      dia_vencimento: fixa.dia_vencimento, 
+      tipo_valor: fixa.tipo_valor,
+      parcelas_totais: fixa.parcelas_totais || '',
+      mes_inicio: fixa.mes_inicio || filterMonth,
+      categoria: fixa.categoria || 'Outros'
+    });
+    setIsNewFixaModal(true);
+  };
+
   const handleCreateFixa = async (e) => {
     e.preventDefault();
-    await fetch('/api/contas_fixas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newFixaForm)
-    });
+    if(editingFixaId) {
+      await fetch(`/api/contas_fixas/${editingFixaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newFixaForm)
+      });
+      setEditingFixaId(null);
+    } else {
+      await fetch('/api/contas_fixas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newFixaForm)
+      });
+    }
     setIsNewFixaModal(false);
-    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO' });
+    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', categoria: 'Outros' });
     fetchData();
   };
   const handleDeleteFixa = async (id) => {
@@ -122,20 +234,50 @@ export default function App() {
     fetchData();
   };
 
-  // Ações - Uber
-  const handleCreateUberLog = async (e) => {
+  // Ações - Configurações
+  const handleSaveSettings = async (e) => {
     e.preventDefault();
-    await fetch('/api/uber_logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUberForm)
-    });
-    setIsNewUberModal(false);
-    setNewUberForm({
-      data: new Date().toISOString().split('T')[0], aplicativo: 'Uber', corridas: '', km: '', tempo_online: '00:00',
-      valor_bruto: '', combustivel: '', manutencao: '', bonus: '', gorjeta: ''
-    });
-    fetchData(); // Vai atualizar inclusive o Dashboard por causa da rota de Dashboard que puxa o total do uber_logs
+    for(const key of Object.keys(settings)) {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value: settings[key] })
+      });
+    }
+    fetchData();
+    fetchData();
+    showToast("Configurações salvas com sucesso!");
+    setTimeout(() => setIsSettingsModalOpen(false), 1500);
+  };
+
+  const TagInput = ({ value, onChange, placeholder }) => {
+    const tags = value ? value.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const [input, setInput] = useState('');
+    
+    const addTag = (e) => {
+      if(e.key === 'Enter' && input.trim()) {
+        e.preventDefault();
+        if(!tags.includes(input.trim())) {
+          onChange([...tags, input.trim()].join(', '));
+        }
+        setInput('');
+      }
+    };
+    
+    const removeTag = (tagToRemove) => {
+      onChange(tags.filter(t => t !== tagToRemove).join(', '));
+    };
+
+    return (
+      <div className="border border-gray-200 rounded-md p-2 flex flex-wrap gap-2 items-center bg-white focus-within:border-[#C87941] w-full">
+        {tags.map(t => (
+          <span key={t} className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded flex items-center">
+            {t} <button type="button" onClick={() => removeTag(t)} className="ml-1 text-gray-400 hover:text-red-500"><X className="w-3 h-3"/></button>
+          </span>
+        ))}
+        <input type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={addTag} placeholder={placeholder} className="flex-1 outline-none text-sm min-w-[120px]" />
+      </div>
+    );
   };
 
   const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
@@ -149,52 +291,99 @@ export default function App() {
   // Progress Bar Dashboard
   const percentConsumed = dashboard.receitasRecebidas > 0 ? Math.min((dashboard.despesasPagas / dashboard.receitasRecebidas) * 100, 100) : 0;
 
-  // Cálculos do Uber Hub
-  const uberTotalCorridas = uberLogs.reduce((acc, log) => acc + log.corridas, 0);
-  const uberTotalKm = uberLogs.reduce((acc, log) => acc + log.km, 0);
-  const uberTotalCusto = uberLogs.reduce((acc, log) => acc + log.combustivel + log.manutencao, 0);
-  const uberLucroTotal = uberLogs.reduce((acc, log) => acc + log.lucro_liquido, 0);
+  // Cálculos Avançados para os Gráficos
+  const receitasDavi = receitas.receitas.filter(r => r.responsavel === 'Davi').reduce((acc, curr) => acc + curr.valor, 0) + receitas.uber_total;
+  const receitasTotais = receitas.receitas.reduce((acc, curr) => acc + curr.valor, 0) + receitas.uber_total;
+  const despesasTotaisMes = despesas.reduce((acc, curr) => acc + curr.valor, 0); 
+  const uberLucroMes = receitas.uber_total;
 
-  let uberTotalHoras = 0;
-  const lucroPorDia = [0,0,0,0,0,0,0]; 
+  const metaPessoal = parseFloat(settings.meta_faturamento_pessoal) || 5000;
+  const metaUber = parseFloat(settings.meta_mes_uber) || 2500;
   
-  uberLogs.forEach(log => {
-      const [y, m, d] = log.data.split('-');
-      const date = new Date(y, m-1, d);
-      lucroPorDia[date.getDay()] += log.lucro_liquido;
+  const zeroAZeroProgress = despesasTotaisMes > 0 ? Math.min((receitasTotais / despesasTotaisMes) * 100, 100) : 100;
 
-      if(log.tempo_online && log.tempo_online.includes(':')) {
-          const [hh, mm] = log.tempo_online.split(':');
-          uberTotalHoras += parseInt(hh, 10) + (parseInt(mm, 10)/60);
-      }
-  });
-
-  const uberMediaHora = uberTotalHoras > 0 ? (uberLucroTotal / uberTotalHoras) : 0;
-  const gaugePercent = Math.min((uberMediaHora / 35) * 100, 100);
+  const despesasPorCategoria = despesas.reduce((acc, curr) => {
+    acc[curr.categoria] = (acc[curr.categoria] || 0) + curr.valor;
+    return acc;
+  }, {});
   
-  const barChartData = {
-    labels: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+  const categoryDonut = {
+    labels: Object.keys(despesasPorCategoria),
     datasets: [{
-      label: 'Lucro Líquido (R$)', data: lucroPorDia,
-      backgroundColor: lucroPorDia.map(val => val >= 100 ? '#7A8B76' : '#C87941'),
-      borderRadius: 4
-    }]
-  };
-  const doughnutData = {
-    labels: ['Progresso', 'Falta'],
-    datasets: [{
-      data: [gaugePercent, 100 - gaugePercent],
-      backgroundColor: ['#7A8B76', '#f3f4f6'],
-      borderWidth: 0, cutout: '80%'
+      data: Object.values(despesasPorCategoria),
+      backgroundColor: ['#2D2A26', '#C87941', '#7A8B76', '#A35C5C', '#E5E5E5', '#9CA3AF', '#D1D5DB'],
+      borderWidth: 1, borderColor: '#fff'
     }]
   };
 
-  const getHeatmapColor = (lucro) => {
-    if(lucro >= 150) return 'bg-[#7A8B76]/20 text-[#7A8B76] font-bold'; 
-    if(lucro >= 50) return 'bg-[#7A8B76]/10 text-[#7A8B76]'; 
-    if(lucro > 0) return 'bg-yellow-50 text-yellow-700'; 
-    return 'bg-[#A35C5C]/20 text-[#A35C5C] font-bold'; 
+  const barData = {
+    labels: ['Resumo do Mês'],
+    datasets: [
+      { label: 'Entradas (R$)', data: [receitasTotais], backgroundColor: '#7A8B76', borderRadius: 6 },
+      { label: 'Saídas (R$)', data: [despesasTotaisMes], backgroundColor: '#A35C5C', borderRadius: 6 }
+    ]
   };
+
+  const personalDonut = {
+    labels: ['Realizado', 'Faltante'],
+    datasets: [{
+      data: [receitasDavi, Math.max(metaPessoal - receitasDavi, 0)],
+      backgroundColor: ['#C87941', '#F9F8F6'],
+      hoverBackgroundColor: ['#b06a39', '#F9F8F6'],
+      borderWidth: 1, borderColor: '#eee'
+    }]
+  };
+
+  const uberDonut = {
+    labels: ['Lucro Uber', 'Restante'],
+    datasets: [{
+      data: [uberLucroMes, Math.max(metaUber - uberLucroMes, 0)],
+      backgroundColor: ['#2D2A26', '#F9F8F6'],
+      hoverBackgroundColor: ['#1a1916', '#F9F8F6'],
+      borderWidth: 1, borderColor: '#eee'
+    }]
+  };
+
+  // 6 Meses de projeção de parcelamentos
+  const getReliefData = () => {
+    const labels = [];
+    const data = [];
+    const [currY, currM] = filterMonth.split('-').map(Number);
+    for(let i=0; i<6; i++) {
+      let targetM = currM + i;
+      let targetY = currY;
+      if(targetM > 12) { targetM -= 12; targetY += 1; }
+      
+      labels.push(`${String(targetM).padStart(2, '0')}/${targetY}`);
+      
+      let sumForMonth = 0;
+      contasFixas.forEach(f => {
+        if(f.tipo_valor === 'PARCELAMENTO' && f.mes_inicio && f.parcelas_totais) {
+          const [sY, sM] = f.mes_inicio.split('-').map(Number);
+          const diff = (targetY - sY)*12 + (targetM - sM);
+          if(diff >= 0 && diff < f.parcelas_totais) {
+            sumForMonth += f.valor_estimado;
+          }
+        }
+      });
+      data.push(sumForMonth);
+    }
+    return { labels, data };
+  };
+
+  const reliefProjection = getReliefData();
+  const reliefLineData = {
+    labels: reliefProjection.labels,
+    datasets: [{
+      label: 'Valor Total de Parcelas (R$)',
+      data: reliefProjection.data,
+      borderColor: '#7A8B76',
+      backgroundColor: 'rgba(122, 139, 118, 0.1)',
+      tension: 0.3,
+      fill: true
+    }]
+  };
+
 
   return (
     <div className={`flex h-screen w-full ${colors.bg} overflow-hidden text-gray-800 font-sans`}>
@@ -226,6 +415,13 @@ export default function App() {
             <span className="font-medium text-sm tracking-wide">Contas Fixas</span>
           </button>
         </nav>
+        
+        <div className="px-4 py-6 mt-auto border-t border-white/5">
+          <button onClick={() => setIsSettingsModalOpen(true)} className={`w-full flex items-center px-4 py-3 rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5`}>
+            <Settings className="w-5 h-5 mr-4 opacity-70" />
+            <span className="font-medium text-sm tracking-wide">Configurações</span>
+          </button>
+        </div>
       </aside>
 
       {/* MAIN CONTENT */}
@@ -260,12 +456,16 @@ export default function App() {
           
           {/* DASHBOARD GERAL */}
           {currentPage === 'dashboard' && (
-            <div className="space-y-12 animate-fade-in">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center mb-6">
+                <p className="text-gray-500 font-light">Resumo financeiro e projeções do mês atual.</p>
+              </div>
+              {/* Cards Superiores - Resumo Financeiro */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm flex flex-col justify-center items-center text-center">
                   <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Comprometido</h3>
                   <p className={`text-4xl font-light ${colors.negative}`}>{formatCurrency(dashboard.comprometido)}</p>
-                  <p className="text-xs text-gray-400 mt-3">Soma de tudo o que está pendente no mês.</p>
+                  <p className="text-xs text-gray-400 mt-3">Soma do que falta pagar este mês.</p>
                 </div>
                 <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm flex flex-col justify-center items-center text-center">
                   <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Realizado</h3>
@@ -274,147 +474,118 @@ export default function App() {
                 </div>
                 <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm flex flex-col justify-center items-center text-center relative overflow-hidden">
                   <div className={`absolute top-0 left-0 w-full h-1 ${dashboard.sobras >= 0 ? colors.bgPositive : colors.bgNegative}`}></div>
-                  <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Sobras (Lucro)</h3>
+                  <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Sobras (Lucro Real)</h3>
                   <p className={`text-4xl font-light ${dashboard.sobras >= 0 ? colors.positive : colors.negative}`}>{formatCurrency(dashboard.sobras)}</p>
-                  <p className="text-xs text-gray-400 mt-3">Receitas totais menos despesas totais.</p>
+                  <p className="text-xs text-gray-400 mt-3">Receitas recebidas menos despesas pagas.</p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm">
-                 <div className="flex justify-between items-end mb-4">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-800">Consumo da Receita</h3>
-                      <p className="text-sm text-gray-500">Quanto da sua receita total já foi consumida pelas despesas pagas.</p>
+              {/* Grid de Gráficos Secundários */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Entradas x Saídas */}
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col">
+                  <h3 className="text-lg font-medium text-gray-800 mb-4">Entradas vs Saídas do Mês</h3>
+                  <div className="h-48 w-full">
+                    <Bar data={barData} options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }} />
+                  </div>
+                </div>
+
+                {/* Zero a Zero */}
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center">
+                  <h3 className="text-lg font-medium text-gray-800 mb-2">Equalização</h3>
+                  <p className="text-sm text-gray-500 mb-6">Receitas vs Despesas.</p>
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-sm font-semibold text-gray-500">Progresso</span>
+                    <span className="text-xl font-light text-gray-800">{zeroAZeroProgress.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden shadow-inner mb-4">
+                    <div className={`h-full transition-all duration-1000 ${zeroAZeroProgress >= 100 ? colors.bgPositive : 'bg-[#C87941]'}`} style={{ width: `${zeroAZeroProgress}%` }}></div>
+                  </div>
+                  <div className="flex justify-between w-full text-xs text-gray-500 font-medium">
+                    <span>Receitas: <strong className="text-[#7A8B76]">{formatCurrency(receitasTotais)}</strong></span>
+                    <span>Despesas: <strong className="text-[#A35C5C]">{formatCurrency(despesasTotaisMes)}</strong></span>
+                  </div>
+                </div>
+
+                {/* Meta Mensal Uber Hub */}
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center relative">
+                  <h3 className="text-lg font-medium text-gray-800 mb-1 w-full text-left">Progresso Uber Hub</h3>
+                  <p className="text-sm text-gray-400 mb-4 w-full text-left">Meta: {formatCurrency(metaUber)}</p>
+                  <div className="w-32 h-32 relative">
+                    <Doughnut data={uberDonut} options={{ cutout: '75%', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
+                    <div className="absolute inset-0 flex items-center justify-center flex-col">
+                      <span className="text-sm font-bold text-gray-800">{Math.min((uberLucroMes/metaUber)*100, 100).toFixed(0)}%</span>
                     </div>
-                    <div className="text-right">
-                      <span className="text-2xl font-light text-gray-800">{percentConsumed.toFixed(1)}%</span>
+                  </div>
+                  <div className="mt-4 text-xs text-gray-500 text-center">
+                    Realizado: {formatCurrency(uberLucroMes)}
+                  </div>
+                </div>
+
+                {/* Meta Faturamento Pessoal */}
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center relative">
+                  <h3 className="text-lg font-medium text-gray-800 mb-1 w-full text-left">Faturamento Pessoal (Davi)</h3>
+                  <p className="text-sm text-gray-400 mb-4 w-full text-left">Meta: {formatCurrency(metaPessoal)}</p>
+                  <div className="w-32 h-32 relative">
+                    <Doughnut data={personalDonut} options={{ cutout: '75%', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
+                    <div className="absolute inset-0 flex items-center justify-center flex-col">
+                      <span className="text-sm font-bold text-[#C87941]">{Math.min((receitasDavi/metaPessoal)*100, 100).toFixed(0)}%</span>
                     </div>
-                 </div>
-                 <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
-                    <div className={`h-4 rounded-full transition-all duration-1000 ${percentConsumed > 80 ? colors.bgNegative : percentConsumed > 50 ? 'bg-[#C87941]' : colors.bgPositive}`} style={{ width: `${percentConsumed}%` }}></div>
-                 </div>
+                  </div>
+                  <div className="mt-4 text-xs text-gray-500 text-center">
+                    Realizado: {formatCurrency(receitasDavi)}
+                  </div>
+                </div>
+
+                {/* Gráfico de Categorias */}
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center relative">
+                  <h3 className="text-lg font-medium text-gray-800 mb-4 w-full text-left">Despesas por Categoria</h3>
+                  <div className="w-48 h-48 relative">
+                    {Object.keys(despesasPorCategoria).length > 0 ? (
+                      <Doughnut data={categoryDonut} options={{ maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
+                    ) : (
+                      <div className="flex items-center justify-center w-full h-full text-gray-300 text-xs text-center">Nenhuma despesa</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Projeção de Alívio */}
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col">
+                  <h3 className="text-lg font-medium text-gray-800 mb-1">Projeção de Alívio (Parcelamentos)</h3>
+                  <p className="text-sm text-gray-400 mb-4">Parcelamentos ativos.</p>
+                  <div className="h-48 w-full">
+                    <Line data={reliefLineData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} />
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
 
           {/* UBER HUB */}
           {currentPage === 'uber' && (
-            <div className="space-y-8 animate-fade-in">
-              <div className="flex justify-between items-center">
-                <p className="text-gray-500 font-light">Controle avançado de frotas, ganhos e despesas automotivas.</p>
-                <button onClick={() => setIsNewUberModal(true)} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Novo Dia Trabalhado</button>
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center mb-6">
+                <p className="text-gray-500 font-light">Gerenciamento completo das suas corridas e gastos com a frota.</p>
               </div>
-
-              {/* DASHBOARD DO UBER HUB */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                
-                {/* Gauge R$/h Líquido */}
-                <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm flex flex-col items-center justify-center relative">
-                  <h3 className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-4 text-center">Média / Hora Líquida</h3>
-                  <div className="w-32 h-32 relative flex items-center justify-center">
-                    <Doughnut data={doughnutData} options={{ cutout: '80%', plugins: { tooltip: { enabled: false }, legend: { display: false } } }} />
-                    <div className="absolute flex flex-col items-center">
-                      <span className={`text-xl font-bold ${uberMediaHora >= 35 ? colors.positive : 'text-gray-800'}`}>
-                        {formatCurrency(uberMediaHora)}
-                      </span>
-                      <span className="text-[10px] text-gray-400">Meta: R$35/h</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Grafico de Barras */}
-                <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm col-span-1 md:col-span-2">
-                   <h3 className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-4">Lucro Líquido por Dia da Semana</h3>
-                   <div className="h-32">
-                     <Bar data={barChartData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} />
-                   </div>
-                </div>
-
-                {/* Resumo do Mês */}
-                <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
-                   <div>
-                     <h3 className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">Corridas Totais</h3>
-                     <p className="text-lg font-medium text-gray-800">{uberTotalCorridas}</p>
-                   </div>
-                   <div className="flex justify-between">
-                     <div>
-                       <h3 className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">Km Rodado</h3>
-                       <p className="text-sm font-medium text-gray-600">{uberTotalKm.toFixed(1)} km</p>
-                     </div>
-                     <div>
-                       <h3 className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">Custo Total</h3>
-                       <p className="text-sm font-medium text-gray-600">{formatCurrency(uberTotalCusto)}</p>
-                     </div>
-                   </div>
-                   <div className="pt-2 border-t border-gray-100">
-                     <h3 className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">Lucro Líquido Total</h3>
-                     <p className={`text-2xl font-bold ${colors.positive}`}>{formatCurrency(uberLucroTotal)}</p>
-                   </div>
-                </div>
-              </div>
-
-              {/* Tabela Histórica Avançada */}
-              <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
-                <table className="w-full text-left border-collapse whitespace-nowrap">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/50 text-gray-500 text-[10px] uppercase tracking-wider">
-                      <th className="py-4 px-4 font-medium">Data</th>
-                      <th className="py-4 px-4 font-medium">App</th>
-                      <th className="py-4 px-4 font-medium text-center">Corridas</th>
-                      <th className="py-4 px-4 font-medium text-center">Horas</th>
-                      <th className="py-4 px-4 font-medium text-right">R$/Km</th>
-                      <th className="py-4 px-4 font-medium text-right">R$/Hora</th>
-                      <th className="py-4 px-4 font-medium text-center">% Comb.</th>
-                      <th className="py-4 px-4 font-medium text-right">Lucro Líq.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {uberLogs.map(log => {
-                      const bruto = log.valor_bruto || 0;
-                      const comb = log.combustivel || 0;
-                      const km = log.km || 1; 
-                      
-                      let horasDec = 0;
-                      if(log.tempo_online && log.tempo_online.includes(':')) {
-                         const [h, m] = log.tempo_online.split(':');
-                         horasDec = parseInt(h) + (parseInt(m)/60);
-                      }
-                      
-                      const valPorKm = log.km > 0 ? (bruto / km) : 0;
-                      const valPorHr = horasDec > 0 ? (bruto / horasDec) : 0;
-                      const percComb = bruto > 0 ? (comb / bruto) * 100 : 0;
-                      
-                      return (
-                        <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 px-4 text-xs font-medium text-gray-600">{log.data.split('-').reverse().join('/')}</td>
-                          <td className="py-3 px-4 text-xs text-gray-500">{log.aplicativo}</td>
-                          <td className="py-3 px-4 text-xs text-center text-gray-700">{log.corridas}</td>
-                          <td className="py-3 px-4 text-xs text-center text-gray-700">{log.tempo_online}</td>
-                          <td className="py-3 px-4 text-xs text-right text-gray-700">{log.km > 0 ? formatCurrency(valPorKm) : 'N/A'}</td>
-                          <td className="py-3 px-4 text-xs text-right text-gray-700">{formatCurrency(valPorHr)}</td>
-                          <td className="py-3 px-4 text-xs text-center text-gray-700">{percComb.toFixed(1)}%</td>
-                          <td className={`py-3 px-4 text-sm text-right rounded-l-md ${getHeatmapColor(log.lucro_liquido)}`}>
-                             {formatCurrency(log.lucro_liquido)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {uberLogs.length === 0 && (
-                      <tr><td colSpan="8" className="py-16 text-center text-gray-400 font-light">Nenhum log registrado neste mês.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <UberHub 
+                fetchGlobalData={fetchData} 
+                colors={colors} 
+                formatCurrency={formatCurrency} 
+                globalMonth={filterMonth}
+                settings={settings}
+              />
             </div>
           )}
 
+          {/* SETTINGS (REMOVIDO DA MAIN) */}
+
           {/* CONTAS A PAGAR */}
           {currentPage === 'payables' && (
-             // ... [Mantido como estava] ...
             <div className="space-y-6 animate-fade-in">
               <div className="flex justify-between items-center mb-6">
                 <p className="text-gray-500 font-light">Gerencie suas despesas pendentes e pagas do mês.</p>
-                <button onClick={() => setIsNewDespesaModal(true)} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
+                <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
               </div>
               <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
                 <table className="w-full text-left border-collapse">
@@ -424,7 +595,7 @@ export default function App() {
                       <th className="py-4 px-6 font-medium">Vencimento</th>
                       <th className="py-4 px-6 font-medium">Descrição</th>
                       <th className="py-4 px-6 font-medium text-right">Valor</th>
-                      <th className="py-4 px-6 font-medium text-center w-24">Ações</th>
+                      <th className="py-4 px-6 font-medium text-center w-28">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -433,12 +604,15 @@ export default function App() {
                       return (
                         <tr key={d.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isPaid ? 'opacity-50' : ''}`}>
                           <td className="py-4 px-6 text-center">
-                            {isPaid ? <CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /> : <button onClick={() => openPayModal(d)} className="w-5 h-5 border-2 border-gray-300 rounded-sm hover:border-[#7A8B76] mx-auto block transition-colors" title="Dar Baixa"></button>}
+                            {isPaid ? <button onClick={() => unpayDespesa(d)}><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button> : <button onClick={() => payDespesaInstant(d)} className="w-5 h-5 border-2 border-gray-300 rounded-sm hover:border-[#7A8B76] mx-auto block transition-colors" title="Dar Baixa"></button>}
                           </td>
                           <td className={`py-4 px-6 text-sm ${isPaid ? 'line-through text-gray-400' : 'text-gray-600'}`}>{d.vencimento.split('-').reverse().join('/')}</td>
                           <td className={`py-4 px-6 font-medium ${isPaid ? 'line-through text-gray-400' : 'text-gray-800'}`}>{d.nome} {d.fixa_id && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">FIXA</span>}</td>
                           <td className={`py-4 px-6 text-right font-medium ${isPaid ? 'text-gray-400' : colors.negative}`}>{formatCurrency(d.valor)}</td>
-                          <td className="py-4 px-6 text-center"><button onClick={() => handleDeleteDespesa(d.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
+                          <td className="py-4 px-6 text-center flex items-center justify-center space-x-2">
+                            <button onClick={() => openEditDespesa(d)} className="text-gray-300 hover:text-[#C87941] transition-colors"><Edit3 className="w-4 h-4 mx-auto" /></button>
+                            <button onClick={() => handleDeleteDespesa(d.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4 mx-auto" /></button>
+                          </td>
                         </tr>
                       )
                     })}
@@ -452,8 +626,11 @@ export default function App() {
           {currentPage === 'incomes' && (
             <div className="space-y-6 animate-fade-in">
               <div className="flex justify-between items-center mb-6">
-                <p className="text-gray-500 font-light">Suas entradas e agregação inteligente do Uber Hub.</p>
-                <button onClick={() => setIsNewReceitaModal(true)} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Receita</button>
+                <div>
+                  <p className="text-gray-500 font-light">Suas entradas e agregação inteligente do Uber Hub.</p>
+                  <p className="text-2xl font-bold text-[#7A8B76] mt-1">Total: {formatCurrency(receitas.receitas.reduce((acc, r) => acc + r.valor, 0) + receitas.uber_total)}</p>
+                </div>
+                <button onClick={openNewReceitaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Receita</button>
               </div>
               <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
                 <table className="w-full text-left border-collapse">
@@ -462,7 +639,7 @@ export default function App() {
                       <th className="py-4 px-6 font-medium">Data</th>
                       <th className="py-4 px-6 font-medium">Origem</th>
                       <th className="py-4 px-6 font-medium text-right">Valor</th>
-                      <th className="py-4 px-6 font-medium text-center w-24">Ações</th>
+                      <th className="py-4 px-6 font-medium text-center w-28">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -478,9 +655,15 @@ export default function App() {
                     {receitas.receitas.map(r => (
                       <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                         <td className="py-4 px-6 text-sm text-gray-600">{r.data.split('-').reverse().join('/')}</td>
-                        <td className="py-4 px-6 font-medium text-gray-800">{r.nome}</td>
+                        <td className="py-4 px-6 font-medium text-gray-800">
+                          {r.nome}
+                          {r.responsavel && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-widest">{r.responsavel}</span>}
+                        </td>
                         <td className={`py-4 px-6 text-right font-medium ${colors.positive}`}>{formatCurrency(r.valor)}</td>
-                        <td className="py-4 px-6 text-center"><button onClick={() => handleDeleteReceita(r.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4 mx-auto" /></button></td>
+                        <td className="py-4 px-6 text-center flex items-center justify-center space-x-2">
+                          <button onClick={() => openEditReceita(r)} className="text-gray-300 hover:text-[#C87941] transition-colors"><Edit3 className="w-4 h-4 mx-auto" /></button>
+                          <button onClick={() => handleDeleteReceita(r.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4 mx-auto" /></button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -491,27 +674,39 @@ export default function App() {
 
           {/* CONTAS FIXAS */}
           {currentPage === 'fixed' && (
-             // ... [Mantido como estava] ...
             <div className="space-y-6 animate-fade-in">
               <div className="flex justify-between items-center mb-6">
                 <p className="text-gray-500 font-light">Contas que se repetem todo mês. Elas são projetadas automaticamente.</p>
-                <button onClick={() => setIsNewFixaModal(true)} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Configurar Conta Fixa</button>
+                <button onClick={openNewFixaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Configurar Conta Fixa</button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {contasFixas.map(fixa => (
-                  <div key={fixa.id} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm relative group">
-                    <button onClick={() => handleDeleteFixa(fixa.id)} className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></button>
-                    <h3 className="text-lg font-medium text-gray-800 mb-1">{fixa.nome}</h3>
-                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-4">Vence dia {fixa.dia_vencimento}</p>
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <p className="text-[10px] text-gray-400 uppercase font-semibold mb-1">Valor Estimado</p>
-                        <p className="text-xl font-light text-gray-800">{formatCurrency(fixa.valor_estimado)}</p>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded border ${fixa.tipo_valor === 'FIXO' ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-orange-50 border-orange-200 text-orange-600'}`}>{fixa.tipo_valor}</span>
-                    </div>
-                  </div>
-                ))}
+              <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/50 text-gray-500 text-xs uppercase tracking-wider">
+                      <th className="py-4 px-6 font-medium">Nome</th>
+                      <th className="py-4 px-6 font-medium">Dia do Vencimento</th>
+                      <th className="py-4 px-6 font-medium">Tipo</th>
+                      <th className="py-4 px-6 font-medium text-right">Valor Estimado</th>
+                      <th className="py-4 px-6 font-medium text-center w-28">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contasFixas.map(fixa => (
+                      <tr key={fixa.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <td className="py-4 px-6 font-medium text-gray-800">{fixa.nome}</td>
+                        <td className="py-4 px-6 text-sm text-gray-600">Dia {fixa.dia_vencimento}</td>
+                        <td className="py-4 px-6">
+                          <span className={`text-[10px] px-2 py-1 rounded border ${fixa.tipo_valor === 'FIXO' ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-orange-50 border-orange-200 text-orange-600'}`}>{fixa.tipo_valor}</span>
+                        </td>
+                        <td className="py-4 px-6 text-right font-medium text-gray-800">{formatCurrency(fixa.valor_estimado)}</td>
+                        <td className="py-4 px-6 text-center flex items-center justify-center space-x-2">
+                          <button onClick={() => openEditFixa(fixa)} className="text-gray-300 hover:text-[#C87941] transition-colors"><Edit3 className="w-4 h-4 mx-auto" /></button>
+                          <button onClick={() => handleDeleteFixa(fixa.id)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4 mx-auto" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -522,76 +717,7 @@ export default function App() {
           MODAIS CUSTOMIZADOS COM BACKDROP BLUR
       ========================================= */}
       
-      {/* Modal Novo Uber Log */}
-      {isNewUberModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-fade-in-up">
-            <div className="flex justify-between items-center p-6 border-b border-gray-100">
-              <h2 className="text-xl font-light text-gray-800">Registrar Novo Dia de Corrida</h2>
-              <button onClick={() => setIsNewUberModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateUberLog} className="p-6 space-y-5">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Data</label>
-                  <input type="date" value={newUberForm.data} onChange={e => setNewUberForm({...newUberForm, data: e.target.value})} className="w-full p-2 border border-gray-200 rounded focus:border-[#C87941] outline-none text-sm text-gray-800" required />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Aplicativo</label>
-                  <select value={newUberForm.aplicativo} onChange={e => setNewUberForm({...newUberForm, aplicativo: e.target.value})} className="w-full p-2 border border-gray-200 rounded focus:border-[#C87941] outline-none text-sm text-gray-800 bg-white">
-                     <option value="Uber">Uber</option>
-                     <option value="99">99</option>
-                     <option value="InDrive">InDrive</option>
-                     <option value="Multi">Multi (Vários)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Tempo Online (HH:MM)</label>
-                  <input type="time" value={newUberForm.tempo_online} onChange={e => setNewUberForm({...newUberForm, tempo_online: e.target.value})} className="w-full p-2 border border-gray-200 rounded focus:border-[#C87941] outline-none text-sm text-gray-800" required />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Corridas Feitas</label>
-                  <input type="number" value={newUberForm.corridas} onChange={e => setNewUberForm({...newUberForm, corridas: e.target.value})} className="w-full p-2 border border-gray-200 rounded focus:border-[#C87941] outline-none text-sm text-gray-800" required />
-                 </div>
-                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Km Rodados</label>
-                  <input type="number" step="0.1" value={newUberForm.km} onChange={e => setNewUberForm({...newUberForm, km: e.target.value})} className="w-full p-2 border border-gray-200 rounded focus:border-[#C87941] outline-none text-sm text-gray-800" required />
-                 </div>
-                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Valor Bruto (R$)</label>
-                  <input type="number" step="0.01" value={newUberForm.valor_bruto} onChange={e => setNewUberForm({...newUberForm, valor_bruto: e.target.value})} className="w-full p-2 border border-gray-200 rounded focus:border-[#C87941] outline-none text-sm text-gray-800" required />
-                 </div>
-              </div>
-              <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Custos & Extras</p>
-                <div className="grid grid-cols-4 gap-4">
-                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Combustível</label>
-                    <input type="number" step="0.01" value={newUberForm.combustivel} onChange={e => setNewUberForm({...newUberForm, combustivel: e.target.value})} className="w-full p-2 border border-gray-200 rounded outline-none text-sm bg-white" required />
-                   </div>
-                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Manutenção</label>
-                    <input type="number" step="0.01" value={newUberForm.manutencao} onChange={e => setNewUberForm({...newUberForm, manutencao: e.target.value})} className="w-full p-2 border border-gray-200 rounded outline-none text-sm bg-white" />
-                   </div>
-                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Bônus</label>
-                    <input type="number" step="0.01" value={newUberForm.bonus} onChange={e => setNewUberForm({...newUberForm, bonus: e.target.value})} className="w-full p-2 border border-gray-200 rounded outline-none text-sm bg-white" />
-                   </div>
-                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Gorjeta</label>
-                    <input type="number" step="0.01" value={newUberForm.gorjeta} onChange={e => setNewUberForm({...newUberForm, gorjeta: e.target.value})} className="w-full p-2 border border-gray-200 rounded outline-none text-sm bg-white" />
-                   </div>
-                </div>
-              </div>
-              <div className="pt-2">
-                <button type="submit" className={`w-full py-3 text-sm font-medium text-white ${colors.action} rounded-md transition-colors shadow-sm`}>Salvar Dia (Lucro será calculado automaticamente)</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Modal Novo Uber Log (REMOVIDO) */}
 
       {/* Outros Modais - Restante Simplificado (Contas Pagar, Receitas) */}
       {isPayModalOpen && despesaToPay && (
@@ -617,6 +743,11 @@ export default function App() {
               <input type="text" placeholder="Nome" value={newDespesaForm.nome} onChange={e => setNewDespesaForm({...newDespesaForm, nome: e.target.value})} className="w-full p-3 border rounded" required />
               <input type="number" placeholder="Valor" value={newDespesaForm.valor} onChange={e => setNewDespesaForm({...newDespesaForm, valor: e.target.value})} className="w-full p-3 border rounded" required />
               <input type="date" value={newDespesaForm.vencimento} onChange={e => setNewDespesaForm({...newDespesaForm, vencimento: e.target.value})} className="w-full p-3 border rounded" required />
+              <select value={newDespesaForm.categoria} onChange={e => setNewDespesaForm({...newDespesaForm, categoria: e.target.value})} className="w-full p-3 border rounded">
+                {(settings.categorias_despesas ? settings.categorias_despesas.split(',') : ['Outros']).map(c => c.trim()).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
               <button type="submit" className={`w-full py-3 text-white ${colors.action} rounded`}>Salvar</button>
             </form>
           </div>
@@ -630,6 +761,11 @@ export default function App() {
               <input type="text" placeholder="Nome" value={newReceitaForm.nome} onChange={e => setNewReceitaForm({...newReceitaForm, nome: e.target.value})} className="w-full p-3 border rounded" required />
               <input type="number" placeholder="Valor" value={newReceitaForm.valor} onChange={e => setNewReceitaForm({...newReceitaForm, valor: e.target.value})} className="w-full p-3 border rounded" required />
               <input type="date" value={newReceitaForm.data} onChange={e => setNewReceitaForm({...newReceitaForm, data: e.target.value})} className="w-full p-3 border rounded" required />
+              <select value={newReceitaForm.responsavel} onChange={e => setNewReceitaForm({...newReceitaForm, responsavel: e.target.value})} className="w-full p-3 border rounded" required>
+                {settings.responsaveis.split(',').map(r => r.trim()).map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
               <button type="submit" className={`w-full py-3 text-white ${colors.action} rounded`}>Salvar</button>
             </form>
           </div>
@@ -642,13 +778,116 @@ export default function App() {
             <form onSubmit={handleCreateFixa} className="space-y-4 mt-4">
               <input type="text" placeholder="Nome" value={newFixaForm.nome} onChange={e => setNewFixaForm({...newFixaForm, nome: e.target.value})} className="w-full p-3 border rounded" required />
               <input type="number" placeholder="Valor Estimado" value={newFixaForm.valor_estimado} onChange={e => setNewFixaForm({...newFixaForm, valor_estimado: e.target.value})} className="w-full p-3 border rounded" required />
-              <input type="number" placeholder="Dia" value={newFixaForm.dia_vencimento} onChange={e => setNewFixaForm({...newFixaForm, dia_vencimento: e.target.value})} className="w-full p-3 border rounded" required />
+              <input type="number" placeholder="Dia de Vencimento" value={newFixaForm.dia_vencimento} onChange={e => setNewFixaForm({...newFixaForm, dia_vencimento: e.target.value})} className="w-full p-3 border rounded" required />
               <select value={newFixaForm.tipo_valor} onChange={e => setNewFixaForm({...newFixaForm, tipo_valor: e.target.value})} className="w-full p-3 border rounded">
                 <option value="FIXO">Valor Fixo</option>
                 <option value="VARIAVEL">Valor Variável</option>
+                <option value="PARCELAMENTO">Parcelamento</option>
               </select>
+              <select value={newFixaForm.categoria} onChange={e => setNewFixaForm({...newFixaForm, categoria: e.target.value})} className="w-full p-3 border rounded">
+                {(settings.categorias_despesas ? settings.categorias_despesas.split(',') : ['Outros']).map(c => c.trim()).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              {newFixaForm.tipo_valor === 'PARCELAMENTO' && (
+                <div className="flex gap-4">
+                  <input type="number" placeholder="Total de Parcelas" value={newFixaForm.parcelas_totais} onChange={e => setNewFixaForm({...newFixaForm, parcelas_totais: e.target.value})} className="w-1/2 p-3 border rounded" required />
+                  <input type="month" value={newFixaForm.mes_inicio} onChange={e => setNewFixaForm({...newFixaForm, mes_inicio: e.target.value})} className="w-1/2 p-3 border rounded" required />
+                </div>
+              )}
               <button type="submit" className={`w-full py-3 text-white ${colors.action} rounded`}>Salvar</button>
             </form>
+          </div>
+        </div>
+      )}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden flex h-[600px] animate-fade-in-up">
+            
+            {/* Sidebar das Configurações */}
+            <div className={`${colors.sidebar} w-64 p-6 flex flex-col text-white`}>
+              <div className="flex items-center mb-8">
+                <h2 className="text-xl font-light tracking-widest uppercase">Ajustes</h2>
+              </div>
+              <nav className="space-y-2 flex-1">
+                <button type="button" onClick={() => setActiveSettingsTab('geral')} className={`w-full text-left px-4 py-2 rounded transition-all ${activeSettingsTab === 'geral' ? 'bg-white/10 font-medium' : 'text-gray-400 hover:text-white'}`}>Geral</button>
+                <button type="button" onClick={() => setActiveSettingsTab('uber')} className={`w-full text-left px-4 py-2 rounded transition-all ${activeSettingsTab === 'uber' ? 'bg-white/10 font-medium' : 'text-gray-400 hover:text-white'}`}>Uber Hub</button>
+                <button type="button" onClick={() => setActiveSettingsTab('categorias')} className={`w-full text-left px-4 py-2 rounded transition-all ${activeSettingsTab === 'categorias' ? 'bg-white/10 font-medium' : 'text-gray-400 hover:text-white'}`}>Categorias</button>
+              </nav>
+            </div>
+
+            {/* Conteúdo das Configurações */}
+            <div className="flex-1 flex flex-col bg-[#F9F8F6] relative">
+              <div className="flex-1 p-10 overflow-y-auto">
+                <button onClick={() => setIsSettingsModalOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-700 z-10"><X className="w-6 h-6"/></button>
+                <form id="settings-form" onSubmit={handleSaveSettings} className="space-y-8 mt-2">
+                  
+                  {activeSettingsTab === 'geral' && (
+                    <div className="space-y-6 animate-fade-in">
+                      <h3 className="text-xl font-medium text-gray-800 border-b pb-2">Metas Pessoais e Responsáveis</h3>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Meta de Faturamento Pessoal (Davi)</label>
+                        <input type="number" step="0.01" value={settings.meta_faturamento_pessoal} onChange={e => setSettings({...settings, meta_faturamento_pessoal: e.target.value})} className="w-full md:w-1/2 px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
+                        <p className="text-xs text-gray-400 mt-1">Sua meta principal para recebimentos.</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Responsáveis (Ex: Davi, Larissa)</label>
+                        <TagInput value={settings.responsaveis} onChange={val => setSettings({...settings, responsaveis: val})} placeholder="Digite e aperte Enter..." />
+                        <p className="text-xs text-gray-400 mt-1">Usado para separar as receitas de cada pessoa na família.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSettingsTab === 'uber' && (
+                    <div className="space-y-6 animate-fade-in">
+                      <h3 className="text-xl font-medium text-gray-800 border-b pb-2">Metas do Uber Hub</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Meta Mensal (R$)</label>
+                          <input type="number" step="0.01" value={settings.meta_mes_uber} onChange={e => setSettings({...settings, meta_mes_uber: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Meta por Hora (R$/h)</label>
+                          <input type="number" step="0.01" value={settings.meta_hora_uber} onChange={e => setSettings({...settings, meta_hora_uber: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Meta por Km (R$/km)</label>
+                          <input type="number" step="0.01" value={settings.meta_km_uber} onChange={e => setSettings({...settings, meta_km_uber: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeSettingsTab === 'categorias' && (
+                    <div className="space-y-6 animate-fade-in">
+                      <h3 className="text-xl font-medium text-gray-800 border-b pb-2">Categorias de Despesas</h3>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Gerencie as Categorias (Ex: Moradia, Lazer)</label>
+                        <TagInput value={settings.categorias_despesas} onChange={val => setSettings({...settings, categorias_despesas: val})} placeholder="Digite a categoria e Enter..." />
+                        <p className="text-xs text-gray-400 mt-1">Essas categorias aparecerão ao registrar uma nova despesa ou conta fixa.</p>
+                      </div>
+                    </div>
+                  )}
+
+                </form>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end shrink-0">
+                <button type="submit" form="settings-form" className={`${colors.action} text-white px-8 py-3 rounded-md font-medium shadow-sm hover:shadow-md transition-all`}>
+                  Salvar Mudanças
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Toast Notification */}
+      {toast && (
+        <div className="fixed top-10 right-10 z-50 animate-fade-in-up">
+          <div className="bg-[#7A8B76] text-white px-6 py-4 rounded-md shadow-lg flex items-center gap-3">
+            <CheckCircle className="w-5 h-5" />
+            <span className="font-medium tracking-wide">{toast}</span>
           </div>
         </div>
       )}

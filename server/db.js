@@ -56,12 +56,12 @@ export async function setupDb() {
       nome TEXT NOT NULL,
       valor_estimado REAL NOT NULL,
       dia_vencimento INTEGER NOT NULL,
-      tipo_valor TEXT DEFAULT 'FIXO' -- 'FIXO' ou 'VARIAVEL'
+      tipo_valor TEXT DEFAULT 'FIXO', -- 'FIXO' ou 'VARIAVEL'
+      categoria TEXT DEFAULT 'Outros'
     )
   `);
 
   // 4. Uber Logs
-  await db.exec(`DROP TABLE IF EXISTS uber_logs`);
   await db.exec(`
     CREATE TABLE IF NOT EXISTS uber_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,6 +112,16 @@ export async function setupDb() {
   `);
 
   // Configurações padrão se não existirem
-  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('monthly_target', '5000')");
-  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('maintenance_km_target', '10000')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('meta_faturamento_pessoal', '5000')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('meta_mes_uber', '2500')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('meta_hora_uber', '35')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('meta_km_uber', '2')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('responsaveis', 'Davi, Larissa')");
+
+  // Migrations seguras
+  try { await db.exec("ALTER TABLE receitas ADD COLUMN responsavel TEXT DEFAULT 'Davi'"); } catch(e) { /* ignore if exists */ }
+  try { await db.exec("ALTER TABLE contas_fixas ADD COLUMN parcelas_totais INTEGER DEFAULT NULL"); } catch(e) { /* ignore if exists */ }
+  try { await db.exec("ALTER TABLE contas_fixas ADD COLUMN mes_inicio TEXT DEFAULT NULL"); } catch(e) { /* ignore if exists */ }
+  try { await db.exec("ALTER TABLE contas_fixas ADD COLUMN categoria TEXT DEFAULT 'Outros'"); } catch(e) { /* ignore if exists */ }
+  try { await db.exec("ALTER TABLE despesas ADD COLUMN data_pagamento TEXT DEFAULT NULL"); } catch(e) { /* ignore if exists */ }
 }
