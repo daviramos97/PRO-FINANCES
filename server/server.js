@@ -347,6 +347,7 @@ app.put('/api/contas_fixas/:id', async (req, res) => {
 app.delete('/api/contas_fixas/:id', async (req, res) => {
   try {
     const db = await openDb();
+    await db.run("DELETE FROM despesas WHERE fixa_id = ? AND status = 'pendente'", [req.params.id]);
     await db.run('DELETE FROM contas_fixas WHERE id = ?', [req.params.id]);
     res.json({ success: true });
   } catch (error) {
