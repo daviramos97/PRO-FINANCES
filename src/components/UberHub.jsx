@@ -11,7 +11,24 @@ import { ptBR } from 'date-fns/locale';
 
 export default function UberHub({ fetchGlobalData, colors, formatCurrency, globalMonth, settings, metaUberDiaria, metaUberSemanal, lucroMes }) {
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('uberhub_activeTab') || 'performance');
-  
+  const [historicalGasPerc, setHistoricalGasPerc] = useState(0);
+
+  // Fetch all-time data once to calculate historical gas percentage
+  useEffect(() => {
+    fetch('/api/uber_logs') // Without filters, it returns all time logs
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          const totalB = data.reduce((acc, log) => acc + log.valor_bruto, 0);
+          const totalC = data.reduce((acc, log) => acc + log.gasto_combustivel, 0);
+          if (totalB > 0) {
+            setHistoricalGasPerc(totalC / totalB);
+          }
+        }
+      })
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('uberhub_activeTab', activeTab);
   }, [activeTab]);
@@ -342,7 +359,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   }, 0);
   
   const percentualSemana = metaUberSemanalProporcional > 0 ? Math.min((lucroSemanaAtual / metaUberSemanalProporcional) * 100, 100) : 100;
-  const percGasolina = metrics.totalBruto > 0 ? (metrics.totalCombustivel / metrics.totalBruto) : 0;
+  const percGasolina = historicalGasPerc > 0 ? historicalGasPerc : (metrics.totalBruto > 0 ? (metrics.totalCombustivel / metrics.totalBruto) : 0);
   const alvoBrutoDiario = metaUberDiaria > 0 ? (metaUberDiaria / (1 - percGasolina)) : 0;
 
   return (
