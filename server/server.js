@@ -1,0 +1,306 @@
+import express from 'express';
+import cors from 'cors';
+import { setupDb, openDb } from './db.js';
+
+const app = express();
+const PORT = 4006;
+
+app.use(cors());
+app.use(express.json());
+
+// Iniciar banco de dados
+setupDb().then(() => console.log('SQLite OK (Versão Definitiva)')).catch(console.error);
+
+// ==========================================
+// PROJEÇÃO DE CONTAS FIXAS NO MÊS
+// ==========================================
+async function projectFixedBillsForMonth(mesAno) {
+  const db = await openDb();
+  const [ano, mes] = mesAno.split('-'); // ex: '2026-07'
+  
+  // Pegar todas as contas fixas
+  const fixas = await db.all('SELECT * FROM contas_fixas');
+  
+  for (const fixa of fixas) {
+    // Verifica se já foi gerada neste mês
+    const jaGerou = await db.get(
+      'SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?',
+      [fixa.id, mesAno]
+    );
+    
+    if (!jaGerou) {
+      // Cria a despesa pendente
+      const vencimentoStr = `${ano}-${mes}-${fixa.dia_vencimento.toString().padStart(2, '0')}`;
+      
+      await db.run(
+        `INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) 
+         VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
+        [`${fixa.nome} (${mes}/${ano})`, fixa.valor_estimado, vencimentoStr, 'Conta Fixa', fixa.id, mesAno]
+      );
+    }
+  }
+}
+
+// ==========================================
+// ENDPOINT DE AGREGAÇÃO (DASHBOARD)
+// ==========================================
+app.get('/api/dashboard/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const mesAno = req.params.mes_ano; // YYYY-MM
+    
+    // Antes de responder, garante a projeção de fixas pro mês
+    await projectFixedBillsForMonth(mesAno);
+
+    // 1. Comprometido (soma de contas a pagar no mes, status = pendente)
+    // Para simplificar, pegamos vencimentos que começam com o mes_ano
+    const compRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE status = 'pendente' AND vencimento LIKE ?", [`${mesAno}%`]);
+    const comprometido = compRow.total || 0;
+
+    // 2. Realizado (Recebido + Pago do mes_ano)
+    const despPagasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE status = 'pago' AND vencimento LIKE ?", [`${mesAno}%`]);
+    const recRecebidasRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE status = 'recebido' AND data LIKE ?", [`${mesAno}%`]);
+    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${mesAno}%`]);
+    
+    const despesasPagas = despPagasRow.total || 0;
+    const receitasRecebidas = (recRecebidasRow.total || 0) + (uberRow.total || 0);
+    const realizado = receitasRecebidas + despesasPagas; // Soma de grana movimentada
+
+    // 3. Sobras (Receitas Totais - Despesas Totais)
+    const todasDespesasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE vencimento LIKE ?", [`${mesAno}%`]);
+    const todasDespesas = todasDespesasRow.total || 0;
+    const sobras = receitasRecebidas - todasDespesas;
+
+    res.json({
+      comprometido,
+      realizado,
+      sobras,
+      receitasRecebidas,
+      despesasPagas
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro no dashboard' });
+  }
+});
+
+// ==========================================
+// DESPESAS E CONTAS A PAGAR
+// ==========================================
+app.get('/api/despesas/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const mesAno = req.params.mes_ano;
+    await projectFixedBillsForMonth(mesAno);
+    const despesas = await db.all("SELECT * FROM despesas WHERE vencimento LIKE ? ORDER BY status DESC, vencimento ASC", [`${mesAno}%`]);
+    res.json(despesas);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.post('/api/despesas', async (req, res) => {
+  try {
+    const { nome, valor, vencimento, categoria, status = 'pendente', forma_pagamento } = req.body;
+    const db = await openDb();
+    await db.run(
+      'INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento) VALUES (?, ?, ?, ?, ?, ?)',
+      [nome, valor, vencimento, categoria, status, forma_pagamento]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.put('/api/despesas/:id', async (req, res) => {
+  try {
+    const { status, valor, data_pagamento } = req.body; // pode receber valor final ajustado
+    const db = await openDb();
+    await db.run(
+      'UPDATE despesas SET status = ?, valor = ? WHERE id = ?',
+      [status, valor, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.delete('/api/despesas/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    await db.run('DELETE FROM despesas WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+// ==========================================
+// RECEITAS E UBER
+// ==========================================
+app.get('/api/receitas/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const mesAno = req.params.mes_ano;
+    const receitasManuais = await db.all("SELECT * FROM receitas WHERE data LIKE ? ORDER BY data DESC", [`${mesAno}%`]);
+    
+    // Obter o total do Uber pro mes
+    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${mesAno}%`]);
+    const uberTotal = uberRow.total || 0;
+
+    res.json({
+      receitas: receitasManuais,
+      uber_total: uberTotal
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.post('/api/receitas', async (req, res) => {
+  try {
+    const { nome, valor, data, status = 'recebido' } = req.body;
+    const db = await openDb();
+    await db.run('INSERT INTO receitas (nome, valor, data, status) VALUES (?, ?, ?, ?)', [nome, valor, data, status]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.delete('/api/receitas/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    await db.run('DELETE FROM receitas WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+// Uber Logs CRUD
+app.get('/api/uber_logs/:mes_ano', async (req, res) => {
+  try {
+    const mesAno = req.params.mes_ano;
+    const db = await openDb();
+    const logs = await db.all("SELECT * FROM uber_logs WHERE data LIKE ? ORDER BY data DESC", [`${mesAno}%`]);
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.post('/api/uber_logs', async (req, res) => {
+  try {
+    const { data, aplicativo, corridas, km, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
+    // Cálculo do Lucro Líquido no Backend
+    const bruto = parseFloat(valor_bruto) || 0;
+    const bns = parseFloat(bonus) || 0;
+    const grj = parseFloat(gorjeta) || 0;
+    const comb = parseFloat(combustivel) || 0;
+    const manu = parseFloat(manutencao) || 0;
+    
+    const lucro_liquido = (bruto + bns + grj) - (comb + manu);
+
+    const db = await openDb();
+    await db.run(
+      'INSERT INTO uber_logs (data, aplicativo, corridas, km, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, lucro_liquido) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [data, aplicativo, corridas, km, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido]
+    );
+    res.json({ success: true, lucro_liquido });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+// ==========================================
+// CONTAS FIXAS
+// ==========================================
+app.get('/api/contas_fixas', async (req, res) => {
+  try {
+    const db = await openDb();
+    const fixas = await db.all("SELECT * FROM contas_fixas ORDER BY dia_vencimento ASC");
+    res.json(fixas);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.post('/api/contas_fixas', async (req, res) => {
+  try {
+    const { nome, valor_estimado, dia_vencimento, tipo_valor = 'FIXO' } = req.body;
+    const db = await openDb();
+    await db.run(
+      'INSERT INTO contas_fixas (nome, valor_estimado, dia_vencimento, tipo_valor) VALUES (?, ?, ?, ?)',
+      [nome, valor_estimado, dia_vencimento, tipo_valor]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.delete('/api/contas_fixas/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    await db.run('DELETE FROM contas_fixas WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+// ==========================================
+// CARTÕES, DÍVIDAS E CONFIGURAÇÕES
+// ==========================================
+// (Cartões e dividas simplificados para manter contexto, mantidos como antes mas via tabelas)
+app.get('/api/debts', async (req, res) => {
+  try {
+    const db = await openDb();
+    const debts = await db.all("SELECT * FROM debts ORDER BY status DESC, due_date ASC");
+    res.json(debts);
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.post('/api/debts', async (req, res) => {
+  try {
+    const { name, total_amount, due_date } = req.body;
+    const db = await openDb();
+    await db.run('INSERT INTO debts (name, total_amount, due_date) VALUES (?, ?, ?)', [name, total_amount, due_date]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.put('/api/debts/:id/pay', async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const db = await openDb();
+    const debt = await db.get("SELECT * FROM debts WHERE id = ?", [req.params.id]);
+    const newPaid = debt.paid_amount + parseFloat(amount);
+    const status = newPaid >= debt.total_amount ? 'paid' : 'open';
+    await db.run('UPDATE debts SET paid_amount = ?, status = ? WHERE id = ?', [newPaid, status, req.params.id]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.get('/api/settings', async (req, res) => {
+  try {
+    const db = await openDb();
+    const rows = await db.all('SELECT * FROM settings');
+    const settings = {}; rows.forEach(r => settings[r.key] = r.value);
+    res.json(settings);
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.post('/api/settings', async (req, res) => {
+  try {
+    const { key, value } = req.body;
+    const db = await openDb();
+    await db.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', [key, value]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
