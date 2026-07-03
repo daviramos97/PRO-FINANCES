@@ -203,7 +203,7 @@ export default function App() {
       dia_vencimento: fixa.dia_vencimento, 
       tipo_valor: fixa.tipo_valor,
       parcelas_totais: fixa.parcelas_totais || '',
-      mes_inicio: fixa.mes_inicio || filterMonth,
+      mes_inicio: fixa.mes_inicio || '',
       categoria: fixa.categoria || 'Outros'
     });
     setIsNewFixaModal(true);
@@ -594,6 +594,7 @@ export default function App() {
                       <th className="py-4 px-6 font-medium w-16 text-center">Status</th>
                       <th className="py-4 px-6 font-medium">Vencimento</th>
                       <th className="py-4 px-6 font-medium">Descrição</th>
+                      <th className="py-4 px-6 font-medium">Categoria</th>
                       <th className="py-4 px-6 font-medium text-right">Valor</th>
                       <th className="py-4 px-6 font-medium text-center w-28">Ações</th>
                     </tr>
@@ -608,6 +609,11 @@ export default function App() {
                           </td>
                           <td className={`py-4 px-6 text-sm ${isPaid ? 'line-through text-gray-400' : 'text-gray-600'}`}>{d.vencimento.split('-').reverse().join('/')}</td>
                           <td className={`py-4 px-6 font-medium ${isPaid ? 'line-through text-gray-400' : 'text-gray-800'}`}>{d.nome} {d.fixa_id && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">FIXA</span>}</td>
+                          <td className={`py-4 px-6 ${isPaid ? 'opacity-50' : ''}`}>
+                            <span className="text-[10px] px-2 py-1 rounded border bg-gray-50 border-gray-200 text-gray-600 uppercase tracking-wider font-medium">
+                              {d.categoria || 'Sem Categoria'}
+                            </span>
+                          </td>
                           <td className={`py-4 px-6 text-right font-medium ${isPaid ? 'text-gray-400' : colors.negative}`}>{formatCurrency(d.valor)}</td>
                           <td className="py-4 px-6 text-center flex items-center justify-center space-x-2">
                             <button onClick={() => openEditDespesa(d)} className="text-gray-300 hover:text-[#C87941] transition-colors"><Edit3 className="w-4 h-4 mx-auto" /></button>
@@ -789,10 +795,21 @@ export default function App() {
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-              {newFixaForm.tipo_valor === 'PARCELAMENTO' && (
+              {newFixaForm.tipo_valor === 'PARCELAMENTO' ? (
                 <div className="flex gap-4">
-                  <input type="number" placeholder="Total de Parcelas" value={newFixaForm.parcelas_totais} onChange={e => setNewFixaForm({...newFixaForm, parcelas_totais: e.target.value})} className="w-1/2 p-3 border rounded" required />
-                  <input type="month" value={newFixaForm.mes_inicio} onChange={e => setNewFixaForm({...newFixaForm, mes_inicio: e.target.value})} className="w-1/2 p-3 border rounded" required />
+                  <div className="w-1/2">
+                    <label className="block text-xs text-gray-500 mb-1">Total de Parcelas</label>
+                    <input type="number" placeholder="Ex: 12" value={newFixaForm.parcelas_totais} onChange={e => setNewFixaForm({...newFixaForm, parcelas_totais: e.target.value})} className="w-full p-3 border rounded" required />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs text-gray-500 mb-1">Mês Inicial</label>
+                    <input type="month" value={newFixaForm.mes_inicio} onChange={e => setNewFixaForm({...newFixaForm, mes_inicio: e.target.value})} className="w-full p-3 border rounded" required />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Mês Inicial (Opcional, para começar a projetar a partir daqui)</label>
+                  <input type="month" value={newFixaForm.mes_inicio || ''} onChange={e => setNewFixaForm({...newFixaForm, mes_inicio: e.target.value})} className="w-full p-3 border rounded" />
                 </div>
               )}
               <button type="submit" className={`w-full py-3 text-white ${colors.action} rounded`}>Salvar</button>

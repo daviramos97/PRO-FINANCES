@@ -31,34 +31,28 @@ async function projectFixedBillsForMonth(mesAno) {
       const monthDiff = (currAno - startAno) * 12 + (currMes - startMes);
       const parcelaAtual = monthDiff + 1;
       
-      if (parcelaAtual <= 0 || parcelaAtual > fixa.parcelas_totais) {
-        continue;
-      }
+      if (parcelaAtual <= 0 || parcelaAtual > fixa.parcelas_totais) continue;
       
-      const jaGerou = await db.get(
-        'SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?',
-        [fixa.id, mesAno]
-      );
-      
+      const jaGerou = await db.get('SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?', [fixa.id, mesAno]);
       if (!jaGerou) {
         const vencimentoStr = `${currAno}-${String(currMes).padStart(2, '0')}-${fixa.dia_vencimento.toString().padStart(2, '0')}`;
         await db.run(
-          `INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) 
-           VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
+          `INSERT OR IGNORE INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
           [`${fixa.nome} (Parcela ${parcelaAtual}/${fixa.parcelas_totais})`, fixa.valor_estimado, vencimentoStr, fixa.categoria || 'Outros', fixa.id, mesAno]
         );
       }
     } else {
-      const jaGerou = await db.get(
-        'SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?',
-        [fixa.id, mesAno]
-      );
+      if (fixa.mes_inicio) {
+        const [startAno, startMes] = fixa.mes_inicio.split('-').map(Number);
+        const [currAno, currMes] = mesAno.split('-').map(Number);
+        if ((currAno - startAno) * 12 + (currMes - startMes) < 0) continue;
+      }
       
+      const jaGerou = await db.get('SELECT id FROM despesas WHERE fixa_id = ? AND mes_referencia = ?', [fixa.id, mesAno]);
       if (!jaGerou) {
         const vencimentoStr = `${ano}-${mes}-${fixa.dia_vencimento.toString().padStart(2, '0')}`;
         await db.run(
-          `INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) 
-           VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
+          `INSERT OR IGNORE INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia) VALUES (?, ?, ?, ?, 'pendente', 'Dinheiro', ?, ?)`,
           [`${fixa.nome} (${mes}/${ano})`, fixa.valor_estimado, vencimentoStr, fixa.categoria || 'Outros', fixa.id, mesAno]
         );
       }
