@@ -20,7 +20,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
       .then(data => {
         if (data && data.length > 0) {
           const totalB = data.reduce((acc, log) => acc + log.valor_bruto, 0);
-          const totalC = data.reduce((acc, log) => acc + log.gasto_combustivel, 0);
+          const totalC = data.reduce((acc, log) => acc + (log.combustivel || 0), 0);
           if (totalB > 0) {
             setHistoricalGasPerc(totalC / totalB);
           }
