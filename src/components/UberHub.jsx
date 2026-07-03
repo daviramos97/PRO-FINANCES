@@ -6,7 +6,7 @@ import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, ScatterChart, Scatter, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart 
 } from 'recharts';
-import { startOfMonth, endOfMonth, eachDayOfInterval, format, parseISO, isSameDay } from 'date-fns';
+import { startOfMonth, endOfMonth, eachDayOfInterval, format, parseISO, isSameDay, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export default function UberHub({ fetchGlobalData, colors, formatCurrency, globalMonth, settings, metaUberDiaria, metaUberSemanal, lucroMes }) {
@@ -319,6 +319,23 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   const gaugeValue = Math.min((metrics.mediaKmMes / metaKm) * 100, 100);
   const gaugeData = [{ name: 'Atingido', value: gaugeValue }, { name: 'Falta', value: 100 - gaugeValue }];
 
+  // METAS DINÂMICAS E ALVO BRUTO
+  const hoje = new Date();
+  const comecoSemana = startOfWeek(hoje, { weekStartsOn: 0 }); // Domingo
+  const fimSemana = endOfWeek(hoje, { weekStartsOn: 0 }); // Sábado
+  
+  const lucroSemanaAtual = uberLogs.reduce((acc, log) => {
+    const dataLog = parseISO(log.data);
+    if (dataLog >= comecoSemana && dataLog <= fimSemana) {
+      return acc + log.lucro_liquido;
+    }
+    return acc;
+  }, 0);
+  
+  const percentualSemana = metaUberSemanal > 0 ? Math.min((lucroSemanaAtual / metaUberSemanal) * 100, 100) : 100;
+  const percGasolina = metrics.totalBruto > 0 ? (metrics.totalCombustivel / metrics.totalBruto) : 0;
+  const alvoBrutoDiario = metaUberDiaria > 0 ? (metaUberDiaria / (1 - percGasolina)) : 0;
+
   return (
     <div className="space-y-6">
       
@@ -424,29 +441,33 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
                 </div>
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Novo Alvo Diário</span>
+                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Novo Alvo Diário (Líquido)</span>
                     <span className={`font-bold ${metaUberDiaria > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberDiaria > 0 ? formatCurrency(metaUberDiaria) : 'Batida!'}</span>
                   </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Alvo Bruto Diário</span>
+                    <span className={`font-bold ${alvoBrutoDiario > 0 ? 'text-[#8B5A2B]' : 'text-[#5a6b55]'}`}>{alvoBrutoDiario > 0 ? formatCurrency(alvoBrutoDiario) : 'Batida!'}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">Estimado c/ base no gasto histórico de {(percGasolina * 100).toFixed(1)}% com combustível.</p>
                 </div>
               </div>
             </div>
             
-            <div className="flex-1 h-48 border-l border-gray-100 pl-6">
-              <h3 className="text-xs font-semibold uppercase text-gray-400 mb-4">Sua Média Atual vs Meta Diária</h3>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={[
-                  { name: 'Sua Média/Dia', valor: new Set(uberLogs.map(l => l.data)).size > 0 ? metrics.totalLucro / new Set(uberLogs.map(l => l.data)).size : 0 },
-                  { name: 'Meta Diária Necessária', valor: metaUberDiaria || 0 }
-                ]}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                  <Tooltip cursor={{fill: '#f9fafb'}} formatter={(value) => formatCurrency(value)} />
-                  <Bar dataKey="valor" radius={[4,4,0,0]}>
-                    <Cell fill="#7A8B76" />
-                    <Cell fill="#C87941" />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="flex-1 border-l border-gray-100 pl-6 flex flex-col justify-center">
+              <h3 className="text-xs font-semibold uppercase text-gray-400 mb-4">Progresso da Semana Atual</h3>
+              <div className="flex justify-between items-end mb-2">
+                <span className="text-3xl font-light text-gray-800">{formatCurrency(lucroSemanaAtual)}</span>
+                <span className="text-sm font-semibold text-gray-500">{percentualSemana.toFixed(1)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-3 mb-2 overflow-hidden">
+                <div className={`h-full transition-all duration-1000 ${percentualSemana >= 100 ? 'bg-[#7A8B76]' : 'bg-[#C87941]'}`} style={{ width: `${percentualSemana}%` }}></div>
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                <span>R$ 0,00</span>
+                <span>{metaUberSemanal > 0 ? formatCurrency(metaUberSemanal) : 'Meta Batida'}</span>
+              </div>
             </div>
           </div>
 
