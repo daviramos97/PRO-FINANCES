@@ -505,15 +505,17 @@ export default function App() {
                   <p className="text-xs text-gray-400 mt-3">Soma do que falta pagar este mês.</p>
                 </div>
                 <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm flex flex-col justify-center items-center text-center">
-                  <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Realizado</h3>
-                  <p className="text-4xl font-light text-gray-800">{formatCurrency(dashboard.realizado)}</p>
-                  <p className="text-xs text-gray-400 mt-3">Soma do que já entrou e saiu da conta.</p>
+                  <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Falta Faturar (Break-even)</h3>
+                  <p className={`text-4xl font-light ${dashboard.breakEven > 0 ? 'text-gray-800' : colors.positive}`}>
+                    {dashboard.breakEven > 0 ? formatCurrency(dashboard.breakEven) : 'Zero a Zero!'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-3">Quanto falta ganhar pra cobrir os custos do mês.</p>
                 </div>
                 <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm flex flex-col justify-center items-center text-center relative overflow-hidden">
-                  <div className={`absolute top-0 left-0 w-full h-1 ${dashboard.sobras >= 0 ? colors.bgPositive : colors.bgNegative}`}></div>
-                  <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Sobras (Lucro Real)</h3>
-                  <p className={`text-4xl font-light ${dashboard.sobras >= 0 ? colors.positive : colors.negative}`}>{formatCurrency(dashboard.sobras)}</p>
-                  <p className="text-xs text-gray-400 mt-3">Receitas recebidas menos despesas pagas.</p>
+                  <div className={`absolute top-0 left-0 w-full h-1 ${dashboard.projecaoSobras >= 0 ? colors.bgPositive : colors.bgNegative}`}></div>
+                  <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Projeção de Sobra Livre</h3>
+                  <p className={`text-4xl font-light ${dashboard.projecaoSobras >= 0 ? colors.positive : colors.negative}`}>{formatCurrency(dashboard.projecaoSobras)}</p>
+                  <p className="text-xs text-gray-400 mt-3">O que vai sobrar se você bater suas metas.</p>
                 </div>
               </div>
 

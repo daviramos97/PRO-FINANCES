@@ -72,28 +72,36 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     await projectFixedBillsForMonth(mesAno);
 
     // 1. Comprometido (soma de contas a pagar no mes, status = pendente)
-    // Para simplificar, pegamos vencimentos que começam com o mes_ano
     const compRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE status = 'pendente' AND vencimento LIKE ?", [`${mesAno}%`]);
     const comprometido = compRow.total || 0;
 
-    // 2. Realizado (Recebido + Pago do mes_ano)
+    // Buscas no BD para os novos cálculos
     const despPagasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE status = 'pago' AND vencimento LIKE ?", [`${mesAno}%`]);
-    const recRecebidasRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE status = 'recebido' AND data LIKE ?", [`${mesAno}%`]);
-    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${mesAno}%`]);
+    const todasDespesasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE vencimento LIKE ?", [`${mesAno}%`]);
     
+    const recRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE data LIKE ?", [`${mesAno}%`]);
+    const recRecebidasRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE status = 'recebido' AND data LIKE ?", [`${mesAno}%`]);
+    
+    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${mesAno}%`]);
+    const metaUberRow = await db.get("SELECT value FROM settings WHERE key = 'meta_mes_uber'");
+    const metaUber = parseFloat(metaUberRow?.value || 0);
+
+    const todasDespesas = todasDespesasRow.total || 0;
     const despesasPagas = despPagasRow.total || 0;
     const receitasRecebidas = (recRecebidasRow.total || 0) + (uberRow.total || 0);
-    const realizado = receitasRecebidas + despesasPagas; // Soma de grana movimentada
 
-    // 3. Sobras (Receitas Totais - Despesas Totais)
-    const todasDespesasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE vencimento LIKE ?", [`${mesAno}%`]);
-    const todasDespesas = todasDespesasRow.total || 0;
-    const sobras = receitasRecebidas - todasDespesas;
+    // 2. Novo card central: Ponto de Equilíbrio (Break-even)
+    const breakEven = Math.max(0, todasDespesas - receitasRecebidas);
+
+    // 3. Novo card da direita: Projeção de Sobras
+    // Baseado nas receitas previstas + (O que for maior: Meta Uber ou Faturamento Uber já feito)
+    const projecaoReceitas = (recRow.total || 0) + Math.max((uberRow.total || 0), metaUber);
+    const projecaoSobras = projecaoReceitas - todasDespesas;
 
     res.json({
       comprometido,
-      realizado,
-      sobras,
+      breakEven,
+      projecaoSobras,
       receitasRecebidas,
       despesasPagas
     });
