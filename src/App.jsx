@@ -507,7 +507,7 @@ export default function App() {
                 <div className="bg-white rounded-xl p-8 border border-gray-100 shadow-sm flex flex-col justify-center items-center text-center">
                   <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Falta Faturar (Break-even)</h3>
                   <p className={`text-4xl font-light ${dashboard.breakEven > 0 ? 'text-gray-800' : colors.positive}`}>
-                    {dashboard.breakEven > 0 ? formatCurrency(dashboard.breakEven) : 'Zero a Zero!'}
+                    {dashboard.breakEven > 0 ? formatCurrency(dashboard.breakEven) : 'Break-even!'}
                   </p>
                   <p className="text-xs text-gray-400 mt-3">Quanto falta ganhar pra cobrir os custos do mês.</p>
                 </div>

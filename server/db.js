@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbPath = path.resolve(__dirname, '../../database.sqlite'); // Caminho na raiz do projeto (PRO FINANCES)
+const dbPath = 'G:\\Meu Drive\\FINANÇAS PRO DATABASE\\database.sqlite';
 
 let dbInstance = null;
 
