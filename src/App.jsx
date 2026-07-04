@@ -21,6 +21,7 @@ export default function App() {
   // Estado dos Dados
   const [dashboard, setDashboard] = useState({ comprometido: 0, realizado: 0, sobras: 0, receitasRecebidas: 0, despesasPagas: 0 });
   const [despesas, setDespesas] = useState([]);
+  const [selectedPayables, setSelectedPayables] = useState([]);
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
   const [contasFixas, setContasFixas] = useState([]);
   const [settings, setSettings] = useState({
@@ -96,6 +97,39 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'pago', valor: despesa.valor, data_pagamento: new Date().toISOString().split('T')[0] })
     });
+    fetchData();
+  };
+
+  const togglePayableSelection = (id) => {
+    if (selectedPayables.includes(id)) {
+      setSelectedPayables(selectedPayables.filter(item => item !== id));
+    } else {
+      setSelectedPayables([...selectedPayables, id]);
+    }
+  };
+
+  const handleSelectAllPayables = (e) => {
+    if (e.target.checked) {
+      const pendingIds = despesas.filter(d => d.status === 'pendente').map(d => d.id);
+      setSelectedPayables(pendingIds);
+    } else {
+      setSelectedPayables([]);
+    }
+  };
+
+  const handleBulkPay = async () => {
+    if (selectedPayables.length === 0) return;
+    const promises = selectedPayables.map(id => {
+      const despesa = despesas.find(d => d.id === id);
+      if (!despesa) return Promise.resolve();
+      return fetch(`/api/despesas/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pago', valor: despesa.valor, data_pagamento: new Date().toISOString().split('T')[0] })
+      });
+    });
+    await Promise.all(promises);
+    setSelectedPayables([]);
     fetchData();
   };
 
@@ -515,7 +549,7 @@ export default function App() {
                   <div className={`absolute top-0 left-0 w-full h-1 ${dashboard.projecaoSobras >= 0 ? colors.bgPositive : colors.bgNegative}`}></div>
                   <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Projeção de Sobra Livre</h3>
                   <p className={`text-4xl font-light ${dashboard.projecaoSobras >= 0 ? colors.positive : colors.negative}`}>{formatCurrency(dashboard.projecaoSobras)}</p>
-                  <p className="text-xs text-gray-400 mt-3">Sua Receita atual + Meta do Uber Hub subtraindo todas as Contas.</p>
+                  <p className="text-xs text-gray-400 mt-3">Sua Meta Global de Faturamento subtraindo todas as Contas.</p>
                 </div>
               </div>
 
@@ -644,10 +678,31 @@ export default function App() {
                 </div>
                 <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
               </div>
+
+              {selectedPayables.length > 0 && (
+                <div className="bg-[#C87941]/10 border border-[#C87941]/20 rounded-xl p-4 mb-4 flex justify-between items-center animate-fade-in">
+                  <div className="text-gray-800">
+                    <span className="font-semibold text-[#C87941]">{selectedPayables.length}</span> contas selecionadas. Total: <span className="font-bold text-lg">{formatCurrency(despesas.filter(d => selectedPayables.includes(d.id)).reduce((acc, d) => acc + d.valor, 0))}</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setSelectedPayables([])} className="text-gray-500 hover:text-gray-700 text-sm font-medium px-2 py-1">Desmarcar Todas</button>
+                    <button onClick={handleBulkPay} className={`${colors.action} text-white px-5 py-2 rounded-md text-sm font-medium hover:opacity-90 transition shadow-sm`}>Pagar Selecionadas</button>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/50 text-gray-500 text-xs uppercase tracking-wider">
+                      <th className="py-4 px-4 w-12 text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-[#C87941] focus:ring-[#C87941] cursor-pointer"
+                          checked={despesas.filter(d => d.status === 'pendente').length > 0 && selectedPayables.length === despesas.filter(d => d.status === 'pendente').length}
+                          onChange={handleSelectAllPayables}
+                        />
+                      </th>
                       <th className="py-4 px-6 font-medium w-16 text-center">Status</th>
                       <th className="py-4 px-6 font-medium">Vencimento</th>
                       <th className="py-4 px-6 font-medium">Descrição</th>
@@ -661,6 +716,16 @@ export default function App() {
                       const isPaid = d.status === 'pago';
                       return (
                         <tr key={d.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isPaid ? 'opacity-50' : ''}`}>
+                          <td className="py-4 px-4 text-center">
+                            {!isPaid && (
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-gray-300 text-[#C87941] focus:ring-[#C87941] cursor-pointer"
+                                checked={selectedPayables.includes(d.id)}
+                                onChange={() => togglePayableSelection(d.id)}
+                              />
+                            )}
+                          </td>
                           <td className="py-4 px-6 text-center">
                             {isPaid ? <button onClick={() => unpayDespesa(d)}><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button> : <button onClick={() => payDespesaInstant(d)} className="w-5 h-5 border-2 border-gray-300 rounded-sm hover:border-[#7A8B76] mx-auto block transition-colors" title="Dar Baixa"></button>}
                           </td>
