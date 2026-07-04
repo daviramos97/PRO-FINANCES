@@ -193,7 +193,7 @@ export default function App() {
 
   const openNewFixaModal = () => {
     setEditingFixaId(null);
-    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', parcelas_totais: '', mes_inicio: filterMonth, categoria: 'Outros' });
+    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', parcelas_totais: '', mes_inicio: filterMonth, categoria: 'Outros', valor_entrada: '' });
     setIsNewFixaModal(true);
   };
 
@@ -206,7 +206,8 @@ export default function App() {
       tipo_valor: fixa.tipo_valor,
       parcelas_totais: fixa.parcelas_totais || '',
       mes_inicio: fixa.mes_inicio || '',
-      categoria: fixa.categoria || 'Outros'
+      categoria: fixa.categoria || 'Outros',
+      valor_entrada: ''
     });
     setIsNewFixaModal(true);
   };
@@ -228,7 +229,7 @@ export default function App() {
       });
     }
     setIsNewFixaModal(false);
-    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', categoria: 'Outros' });
+    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', categoria: 'Outros', valor_entrada: '' });
     fetchData();
   };
   const handleDeleteFixa = (id) => {
@@ -851,11 +852,17 @@ export default function App() {
               </select>
               {newFixaForm.tipo_valor === 'PARCELAMENTO' ? (
                 <div className="flex gap-4">
-                  <div className="w-1/2">
+                  {!editingFixaId && (
+                    <div className="w-1/3">
+                      <label className="block text-xs text-gray-500 mb-1">Entrada (Opcional)</label>
+                      <input type="number" placeholder="Ex: 500" value={newFixaForm.valor_entrada || ''} onChange={e => setNewFixaForm({...newFixaForm, valor_entrada: e.target.value})} className="w-full p-3 border rounded" />
+                    </div>
+                  )}
+                  <div className={!editingFixaId ? "w-1/3" : "w-1/2"}>
                     <label className="block text-xs text-gray-500 mb-1">Total de Parcelas</label>
                     <input type="number" placeholder="Ex: 12" value={newFixaForm.parcelas_totais} onChange={e => setNewFixaForm({...newFixaForm, parcelas_totais: e.target.value})} className="w-full p-3 border rounded" required />
                   </div>
-                  <div className="w-1/2">
+                  <div className={!editingFixaId ? "w-1/3" : "w-1/2"}>
                     <label className="block text-xs text-gray-500 mb-1">Mês Inicial</label>
                     <input type="month" value={newFixaForm.mes_inicio} onChange={e => setNewFixaForm({...newFixaForm, mes_inicio: e.target.value})} className="w-full p-3 border rounded" required />
                   </div>

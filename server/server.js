@@ -312,12 +312,24 @@ app.get('/api/contas_fixas', async (req, res) => {
 
 app.post('/api/contas_fixas', async (req, res) => {
   try {
-    const { nome, valor_estimado, dia_vencimento, tipo_valor = 'FIXO', parcelas_totais = null, mes_inicio = null, categoria = 'Outros' } = req.body;
+    const { nome, valor_estimado, dia_vencimento, tipo_valor = 'FIXO', parcelas_totais = null, mes_inicio = null, categoria = 'Outros', valor_entrada = 0 } = req.body;
     const db = await openDb();
-    await db.run(
+    const result = await db.run(
       'INSERT INTO contas_fixas (nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais, mes_inicio, categoria) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais, mes_inicio, categoria]
     );
+    const fixaId = result.lastID;
+
+    if (Number(valor_entrada) > 0) {
+      const date = new Date();
+      const vencimento = date.toISOString().split('T')[0];
+      const mesReferencia = vencimento.substring(0, 7);
+
+      await db.run(
+        'INSERT INTO despesas (nome, valor, vencimento, categoria, status, forma_pagamento, fixa_id, mes_referencia, data_pagamento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [`${nome} (Entrada)`, Number(valor_entrada), vencimento, categoria, 'pago', 'Dinheiro', fixaId, mesReferencia, vencimento]
+      );
+    }
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro' });
