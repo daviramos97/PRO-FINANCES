@@ -94,12 +94,12 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     const breakEven = Math.max(0, todasDespesas - receitasRecebidas);
 
     // 3. Novo card da direita: Projeção de Sobras
-    // Lê a meta global do usuário (ex: 6000)
-    const metaPessoalRow = await db.get("SELECT value FROM settings WHERE key = 'meta_faturamento_pessoal'");
-    const metaPessoal = parseFloat(metaPessoalRow?.value || 0);
+    // Volta a usar a Meta do Uber para compor a projeção (pois o usuário atualiza essa meta e espera o reflexo)
+    const metaUberRow = await db.get("SELECT value FROM settings WHERE key = 'meta_mes_uber'");
+    const metaUber = parseFloat(metaUberRow?.value || 0);
     
-    // Projeta as receitas como sendo a Meta Global (ou o total já recebido, se ele já bateu a meta)
-    const projecaoReceitas = Math.max(receitasRecebidas, metaPessoal);
+    // Projeta as receitas somando as Receitas Fixas com a Meta do Uber (ou o que já foi feito, se for maior)
+    const projecaoReceitas = (recRow.total || 0) + Math.max((uberRow.total || 0), metaUber);
     const projecaoSobras = projecaoReceitas - todasDespesas;
 
     res.json({

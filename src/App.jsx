@@ -515,7 +515,7 @@ export default function App() {
                   <div className={`absolute top-0 left-0 w-full h-1 ${dashboard.projecaoSobras >= 0 ? colors.bgPositive : colors.bgNegative}`}></div>
                   <h3 className="text-sm font-semibold tracking-widest uppercase text-gray-400 mb-2">Projeção de Sobra Livre</h3>
                   <p className={`text-4xl font-light ${dashboard.projecaoSobras >= 0 ? colors.positive : colors.negative}`}>{formatCurrency(dashboard.projecaoSobras)}</p>
-                  <p className="text-xs text-gray-400 mt-3">O que vai sobrar se você bater suas metas.</p>
+                  <p className="text-xs text-gray-400 mt-3">Sua Receita atual + Meta do Uber Hub subtraindo todas as Contas.</p>
                 </div>
               </div>
 
