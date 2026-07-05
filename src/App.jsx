@@ -22,6 +22,7 @@ export default function App() {
   const [dashboard, setDashboard] = useState({ comprometido: 0, realizado: 0, sobras: 0, receitasRecebidas: 0, despesasPagas: 0 });
   const [despesas, setDespesas] = useState([]);
   const [selectedPayables, setSelectedPayables] = useState([]);
+  const [deleteReceitaId, setDeleteReceitaId] = useState(null);
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
   const [contasFixas, setContasFixas] = useState([]);
   const [settings, setSettings] = useState({
@@ -217,8 +218,14 @@ export default function App() {
     setNewReceitaForm({ nome: '', valor: '', data: new Date().toISOString().split('T')[0] });
     fetchData();
   };
-  const handleDeleteReceita = async (id) => {
-    await fetch(`/api/receitas/${id}`, { method: 'DELETE' });
+  const handleDeleteReceita = (id) => {
+    setDeleteReceitaId(id);
+  };
+  
+  const confirmDeleteReceita = async () => {
+    if (!deleteReceitaId) return;
+    await fetch(`/api/receitas/${deleteReceitaId}`, { method: 'DELETE' });
+    setDeleteReceitaId(null);
     fetchData();
   };
 
@@ -804,7 +811,10 @@ export default function App() {
           {currentPage === 'fixed' && (
             <div className="space-y-6 animate-fade-in">
               <div className="flex justify-between items-center mb-6">
-                <p className="text-gray-500 font-light">Contas que se repetem todo mês. Elas são projetadas automaticamente.</p>
+                <div>
+                  <p className="text-gray-500 font-light">Contas que se repetem todo mês. Elas são projetadas automaticamente.</p>
+                  <p className="text-2xl font-bold text-[#A35C5C] mt-1">Total Estimado: {formatCurrency(contasFixas.reduce((acc, c) => acc + (c.valor_estimado || 0), 0))}</p>
+                </div>
                 <button onClick={openNewFixaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Configurar Conta Fixa</button>
               </div>
               <div className="bg-white border border-gray-100 shadow-sm rounded-xl overflow-hidden">
@@ -1054,6 +1064,19 @@ export default function App() {
           </div>
         </div>
       )}
+      {deleteReceitaId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-fade-in-up border border-gray-100">
+            <h2 className="text-xl font-light text-gray-800 mb-2">Confirmar Exclusão</h2>
+            <p className="text-sm text-gray-500 mb-6">Tem certeza que deseja excluir esta receita? Essa ação não pode ser desfeita.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteReceitaId(null)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-md font-medium hover:bg-gray-50 transition">Cancelar</button>
+              <button onClick={confirmDeleteReceita} className="flex-1 py-2.5 bg-red-500 text-white rounded-md font-medium hover:bg-red-600 transition shadow-sm">Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

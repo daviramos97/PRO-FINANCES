@@ -73,6 +73,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   // FORM AND MODAL STATE
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
   const [form, setForm] = useState({
     data: new Date().toISOString().split('T')[0],
     aplicativo: 'Uber', corridas: '', km: '', tempo_online: '00:00',
@@ -232,12 +233,16 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id) => {
-    if(window.confirm('Excluir este registro?')) {
-      await fetch(`/api/uber_logs/${id}`, { method: 'DELETE' });
-      fetchLocalLogs();
-      fetchGlobalData();
-    }
+  const handleDelete = (id) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if(!deleteId) return;
+    await fetch(`/api/uber_logs/${deleteId}`, { method: 'DELETE' });
+    setDeleteId(null);
+    fetchLocalLogs();
+    fetchGlobalData();
   };
 
   // HELPERS
@@ -821,6 +826,20 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
               <button form="uberForm" type="submit" className="flex-1 py-3 bg-[#2D2A26] hover:bg-[#1a1816] text-white text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center">
                 <Save className="w-4 h-4 mr-2" /> Salvar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE MODAL */}
+      {deleteId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl relative animate-fade-in-up border border-gray-100">
+            <h2 className="text-xl font-light text-gray-800 mb-2">Confirmar Exclusão</h2>
+            <p className="text-sm text-gray-500 mb-6">Tem certeza que deseja excluir esta jornada? Essa ação não pode ser desfeita.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-md font-medium hover:bg-gray-50 transition">Cancelar</button>
+              <button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-md font-medium hover:bg-red-600 transition shadow-sm">Excluir</button>
             </div>
           </div>
         </div>
