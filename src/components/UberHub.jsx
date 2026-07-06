@@ -466,8 +466,8 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Novo Alvo Semanal (Padrão 7 Dias)</span>
-                    <span className={`font-bold ${metaUberSemanal > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberSemanal > 0 ? formatCurrency(metaUberSemanal) : 'Batida!'}</span>
+                    <span className="text-gray-500 uppercase font-semibold tracking-wider">Alvo Desta Semana</span>
+                    <span className={`font-bold ${metaUberSemanalProporcional > 0 ? 'text-[#C87941]' : 'text-[#7A8B76]'}`}>{metaUberSemanalProporcional > 0 ? formatCurrency(metaUberSemanalProporcional) : 'Batida!'}</span>
                   </div>
                 </div>
                 <div>
