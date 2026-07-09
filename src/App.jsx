@@ -32,6 +32,7 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState('geral');
   const [toast, setToast] = useState(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const showToast = (message) => {
     setToast(message);
@@ -510,15 +511,6 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col h-full overflow-y-auto relative">
-        {showOilAlert && (
-          <div className={`w-full text-white text-sm font-medium py-2 px-10 flex items-center justify-between ${oilAlertColor} shadow-md z-40`}>
-            <div className="flex items-center">
-              <Car className="w-4 h-4 mr-2" />
-              Atenção: {oilAlertRemaining <= 0 ? 'Já passou do momento de trocar o óleo!' : `Faltam apenas ${Math.max(0, oilAlertRemaining).toLocaleString('pt-BR')} KM para a próxima troca de óleo!`}
-            </div>
-            <button onClick={() => { setIsSettingsModalOpen(true); setActiveSettingsTab('uber'); }} className="text-white hover:text-gray-200 underline text-xs">Atualizar Configuração</button>
-          </div>
-        )}
         <header className="pt-8 pb-6 flex items-center justify-between px-10 sticky top-0 z-30 bg-[#F9F8F6]">
           <div className="flex items-center space-x-4">
             <h1 className="text-2xl font-light text-gray-800">
@@ -540,7 +532,38 @@ export default function App() {
                 className="outline-none text-gray-700 font-medium bg-transparent cursor-pointer"
               />
             </div>
-            <button className="relative p-2 text-gray-400 hover:text-gray-800 transition-all"><Bell className="w-5 h-5" /></button>
+            <div className="relative">
+              <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="relative p-2 text-gray-400 hover:text-gray-800 transition-all">
+                <Bell className="w-5 h-5" />
+                {showOilAlert && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#F9F8F6]"></span>}
+              </button>
+              {isNotificationsOpen && (
+                <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden animate-fade-in">
+                  <div className="p-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <span className="text-sm font-semibold text-gray-700">Notificações</span>
+                    {showOilAlert && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">1 Nova</span>}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto p-2">
+                    {showOilAlert ? (
+                      <div className={`p-3 rounded-md mb-2 flex items-start space-x-3 ${oilAlertColor.includes('red') ? 'bg-red-50' : 'bg-orange-50'}`}>
+                        <div className={`p-2 rounded-full ${oilAlertColor.includes('red') ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                          <Car className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className={`text-sm font-bold ${oilAlertColor.includes('red') ? 'text-red-800' : 'text-orange-800'}`}>Troca de Óleo</h4>
+                          <p className={`text-xs mt-1 ${oilAlertColor.includes('red') ? 'text-red-600' : 'text-orange-600'}`}>
+                            {oilAlertRemaining <= 0 ? 'Já passou do momento de trocar o óleo!' : `Faltam apenas ${Math.max(0, oilAlertRemaining).toLocaleString('pt-BR')} KM.`}
+                          </p>
+                          <button onClick={() => { setIsNotificationsOpen(false); setIsSettingsModalOpen(true); setActiveSettingsTab('uber'); }} className={`text-xs underline mt-2 ${oilAlertColor.includes('red') ? 'text-red-700' : 'text-orange-700'}`}>Atualizar Configuração</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-sm text-gray-400">Nenhuma notificação no momento.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className={`w-9 h-9 rounded-full ${colors.bgPositive} flex items-center justify-center text-white font-bold shadow-sm`}>DR</div>
           </div>
         </header>

@@ -805,10 +805,9 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
 
                 <div>
                   <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center"><Clock className="w-3 h-3 mr-1"/> Operação</label>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <input type="time" title="Horas Online" value={form.tempo_online} onChange={e => setForm({...form, tempo_online: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
                     <input type="number" title="Corridas" placeholder="Viagens" value={form.corridas} onChange={e => setForm({...form, corridas: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
-                    <input type="number" step="0.1" title="Km Rodados (Calculado)" placeholder="KM Total" value={form.km} onChange={e => setForm({...form, km: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     <input type="number" step="0.1" title="Odômetro Inicial" placeholder="Odômetro Inicial" value={form.km_inicial} onChange={e => setForm({...form, km_inicial: e.target.value, km: (form.km_final && e.target.value) ? Math.max(0, parseFloat(form.km_final) - parseFloat(e.target.value)) : form.km})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" />
