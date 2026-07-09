@@ -494,7 +494,14 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
                 </span>
               </h3>
               <div className="flex justify-between items-end mb-2">
-                <span className="text-3xl font-light text-gray-800">{formatCurrency(lucroSemanaAtual)}</span>
+                <div className="flex items-baseline">
+                  <span className="text-3xl font-light text-gray-800">{formatCurrency(lucroSemanaAtual)}</span>
+                  {metaUberSemanalProporcional > lucroSemanaAtual && (
+                    <span className="text-xs text-gray-400/50 ml-3 font-medium tracking-wide">
+                      Faltam {formatCurrency(metaUberSemanalProporcional - lucroSemanaAtual)}
+                    </span>
+                  )}
+                </div>
                 <span className="text-sm font-semibold text-gray-500">{percentualSemana.toFixed(1)}%</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-3 mb-2 overflow-hidden">
