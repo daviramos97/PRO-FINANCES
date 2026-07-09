@@ -44,6 +44,8 @@ export default function App() {
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [despesaToPay, setDespesaToPay] = useState(null);
   const [payForm, setPayForm] = useState({ valor: '', data_pagamento: '' });
+  const [isUnpayModalOpen, setIsUnpayModalOpen] = useState(false);
+  const [despesaToUnpay, setDespesaToUnpay] = useState(null);
 
   const [isNewReceitaModal, setIsNewReceitaModal] = useState(false);
   const [newReceitaForm, setNewReceitaForm] = useState({ nome: '', valor: '', data: new Date().toISOString().split('T')[0] });
@@ -58,7 +60,16 @@ export default function App() {
 
   const fetchData = () => {
     fetch(`/api/dashboard/${filterMonth}`).then(res => res.json()).then(setDashboard).catch(console.error);
-    fetch(`/api/despesas/${filterMonth}`).then(res => res.json()).then(setDespesas).catch(console.error);
+    fetch(`/api/despesas/${filterMonth}`).then(res => res.json()).then(data => {
+      const sorted = [...data].sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'pendente' ? -1 : 1;
+        if (a.status === 'pendente') return a.vencimento.localeCompare(b.vencimento);
+        const dateA = a.data_pagamento || a.vencimento;
+        const dateB = b.data_pagamento || b.vencimento;
+        return dateB.localeCompare(dateA);
+      });
+      setDespesas(sorted);
+    }).catch(console.error);
     fetch(`/api/receitas/${filterMonth}`).then(res => res.json()).then(setReceitas).catch(console.error);
     fetch(`/api/contas_fixas`).then(res => res.json()).then(setContasFixas).catch(console.error);
     fetch(`/api/settings`).then(res => res.json()).then(data => {
@@ -127,12 +138,19 @@ export default function App() {
     fetchData();
   };
 
-  const unpayDespesa = async (despesa) => {
-    await fetch(`/api/despesas/${despesa.id}`, {
+  const openUnpayModal = (despesa) => {
+    setDespesaToUnpay(despesa);
+    setIsUnpayModalOpen(true);
+  };
+
+  const confirmUnpayDespesa = async () => {
+    if (!despesaToUnpay) return;
+    await fetch(`/api/despesas/${despesaToUnpay.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'pendente', valor: despesa.valor, data_pagamento: null })
+      body: JSON.stringify({ status: 'pendente', valor: despesaToUnpay.valor, data_pagamento: null })
     });
+    setIsUnpayModalOpen(false);
     fetchData();
   };
 
@@ -761,7 +779,7 @@ export default function App() {
                           <td className="py-4 px-6 text-center">
                             {isPaid ? (
                               <div className="flex flex-col items-center justify-center">
-                                <button onClick={() => unpayDespesa(d)} title="Desfazer Pagamento"><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button>
+                                <button onClick={() => openUnpayModal(d)} title="Desfazer Pagamento"><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button>
                                 {d.data_pagamento && <span className="text-[9px] text-[#7A8B76] font-bold mt-1 tracking-widest uppercase block">{d.data_pagamento.split('-').reverse().join('/')}</span>}
                               </div>
                             ) : (
@@ -899,6 +917,18 @@ export default function App() {
       {/* Modal Novo Uber Log (REMOVIDO) */}
 
       {/* Outros Modais - Restante Simplificado (Contas Pagar, Receitas) */}
+      {isUnpayModalOpen && despesaToUnpay && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl p-6 animate-fade-in-up">
+            <h2 className="text-xl font-light text-gray-800 mb-2">Desfazer Pagamento?</h2>
+            <p className="text-sm text-gray-500 mb-6">A conta <strong className="text-gray-800">{despesaToUnpay.nome}</strong> voltará para o status pendente.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setIsUnpayModalOpen(false)} className="flex-1 py-3 bg-gray-100 rounded-md text-gray-600 font-medium hover:bg-gray-200 transition-colors">Cancelar</button>
+              <button onClick={confirmUnpayDespesa} className="flex-1 py-3 bg-[#A35C5C] hover:bg-[#8e5050] text-white rounded-md font-medium transition-colors">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {isPayModalOpen && despesaToPay && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl p-6 animate-fade-in-up">
