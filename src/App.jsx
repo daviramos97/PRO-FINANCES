@@ -40,6 +40,7 @@ export default function App() {
   };
   
   // Modais Customizados
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [despesaToPay, setDespesaToPay] = useState(null);
   const [payForm, setPayForm] = useState({ valor: '', data_pagamento: '' });
@@ -721,17 +722,30 @@ export default function App() {
                   <p className="text-gray-500 font-light">Gerencie suas despesas pendentes e pagas do mês.</p>
                   <p className="text-2xl font-bold text-[#A35C5C] mt-1">Total: {formatCurrency(despesas.reduce((acc, d) => acc + d.valor, 0))}</p>
                 </div>
-                <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
+                <div className="flex gap-2">
+                  <button onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedPayables([]); }} className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide">
+                    {isSelectionMode ? 'Cancelar Seleção' : 'Selecionar'}
+                  </button>
+                  <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
+                </div>
               </div>
 
-              {selectedPayables.length > 0 && (
+              {isSelectionMode && (
                 <div className="bg-[#C87941]/10 border border-[#C87941]/20 rounded-xl p-4 mb-4 flex justify-between items-center animate-fade-in">
-                  <div className="text-gray-800">
-                    <span className="font-semibold text-[#C87941]">{selectedPayables.length}</span> contas selecionadas. Total: <span className="font-bold text-lg">{formatCurrency(despesas.filter(d => selectedPayables.includes(d.id)).reduce((acc, d) => acc + d.valor, 0))}</span>
+                  <div className="text-gray-800 flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" className="rounded border-gray-300 text-[#C87941] focus:ring-[#C87941] cursor-pointer"
+                             checked={despesas.filter(d => d.status === 'pendente').length > 0 && selectedPayables.length === despesas.filter(d => d.status === 'pendente').length}
+                             onChange={handleSelectAllPayables} />
+                      <span className="text-sm font-medium">Selecionar Tudo</span>
+                    </div>
+                    <span>
+                      <span className="font-semibold text-[#C87941]">{selectedPayables.length}</span> contas. Total: <span className="font-bold">{formatCurrency(despesas.filter(d => selectedPayables.includes(d.id)).reduce((acc, d) => acc + d.valor, 0))}</span>
+                    </span>
                   </div>
                   <div className="flex gap-3">
-                    <button onClick={() => setSelectedPayables([])} className="text-gray-500 hover:text-gray-700 text-sm font-medium px-2 py-1">Desmarcar Todas</button>
-                    <button onClick={handleBulkPay} className={`${colors.action} text-white px-5 py-2 rounded-md text-sm font-medium hover:opacity-90 transition shadow-sm`}>Pagar Selecionadas</button>
+                    <button onClick={() => setSelectedPayables([])} className="text-gray-500 hover:text-gray-700 text-sm font-medium px-2 py-1">Desmarcar</button>
+                    <button onClick={handleBulkPay} disabled={selectedPayables.length === 0} className={`${selectedPayables.length > 0 ? colors.action : 'bg-gray-300'} text-white px-5 py-2 rounded-md text-sm font-medium transition shadow-sm`}>Pagar Selecionadas</button>
                   </div>
                 </div>
               )}
@@ -740,15 +754,7 @@ export default function App() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/50 text-gray-500 text-xs uppercase tracking-wider">
-                      <th className="py-4 px-4 w-12 text-center">
-                        <input 
-                          type="checkbox" 
-                          className="rounded border-gray-300 text-[#C87941] focus:ring-[#C87941] cursor-pointer"
-                          checked={despesas.filter(d => d.status === 'pendente').length > 0 && selectedPayables.length === despesas.filter(d => d.status === 'pendente').length}
-                          onChange={handleSelectAllPayables}
-                        />
-                      </th>
-                      <th className="py-4 px-6 font-medium w-16 text-center">Status</th>
+                      <th className="py-4 px-6 font-medium w-28 text-center">Status</th>
                       <th className="py-4 px-6 font-medium">Vencimento</th>
                       <th className="py-4 px-6 font-medium">Descrição</th>
                       <th className="py-4 px-6 font-medium">Categoria</th>
@@ -761,18 +767,21 @@ export default function App() {
                       const isPaid = d.status === 'pago';
                       return (
                         <tr key={d.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isPaid ? 'opacity-50' : ''}`}>
-                          <td className="py-4 px-4 text-center">
-                            {!isPaid && (
-                              <input 
-                                type="checkbox" 
-                                className="rounded border-gray-300 text-[#C87941] focus:ring-[#C87941] cursor-pointer"
-                                checked={selectedPayables.includes(d.id)}
-                                onChange={() => togglePayableSelection(d.id)}
-                              />
-                            )}
-                          </td>
                           <td className="py-4 px-6 text-center">
-                            {isPaid ? <button onClick={() => unpayDespesa(d)}><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button> : <button onClick={() => payDespesaInstant(d)} className="w-5 h-5 border-2 border-gray-300 rounded-sm hover:border-[#7A8B76] mx-auto block transition-colors" title="Dar Baixa"></button>}
+                            {isPaid ? (
+                              <button onClick={() => unpayDespesa(d)} title="Desfazer Pagamento"><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button>
+                            ) : (
+                              isSelectionMode ? (
+                                <input 
+                                  type="checkbox" 
+                                  className="rounded border-gray-300 text-[#C87941] focus:ring-[#C87941] cursor-pointer w-4 h-4 mx-auto block"
+                                  checked={selectedPayables.includes(d.id)}
+                                  onChange={() => togglePayableSelection(d.id)}
+                                />
+                              ) : (
+                                <button onClick={() => payDespesaInstant(d)} className="bg-[#7A8B76] text-white text-[11px] px-3 py-1.5 rounded-sm font-medium hover:bg-[#687a64] transition-colors mx-auto block uppercase tracking-wide shadow-sm" title="Pagar Conta">Pagar</button>
+                              )
+                            )}
                           </td>
                           <td className={`py-4 px-6 text-sm ${isPaid ? 'line-through text-gray-400' : 'text-gray-600'}`}>{d.vencimento.split('-').reverse().join('/')}</td>
                           <td className={`py-4 px-6 font-medium ${isPaid ? 'line-through text-gray-400' : 'text-gray-800'}`}>{d.nome} {d.fixa_id && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">FIXA</span>}</td>
