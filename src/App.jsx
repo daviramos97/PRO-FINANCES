@@ -400,16 +400,16 @@ export default function App() {
     labels: Object.keys(despesasPorCategoria),
     datasets: [{
       data: Object.values(despesasPorCategoria),
-      backgroundColor: ['#2D2A26', '#C87941', '#7A8B76', '#A35C5C', '#E5E5E5', '#9CA3AF', '#D1D5DB'],
+      backgroundColor: ['#2D2A26', '#C87941', '#7A8B76', '#A35C5C', '#E8C872', '#4B6584', '#8854D0', '#D1D5DB'],
       borderWidth: 1, borderColor: '#fff'
     }]
   };
 
   const barData = {
-    labels: ['Resumo do Mês'],
+    labels: dashboard?.history ? dashboard.history.map(h => h.month) : ['Resumo do Mês'],
     datasets: [
-      { label: 'Entradas (R$)', data: [receitasTotais], backgroundColor: '#7A8B76', borderRadius: 6 },
-      { label: 'Saídas (R$)', data: [despesasTotaisMes], backgroundColor: '#A35C5C', borderRadius: 6 }
+      { label: 'Entradas (R$)', data: dashboard?.history ? dashboard.history.map(h => h.entradas) : [receitasTotais], backgroundColor: '#7A8B76', borderRadius: 4 },
+      { label: 'Saídas (R$)', data: dashboard?.history ? dashboard.history.map(h => h.saidas) : [despesasTotaisMes], backgroundColor: '#A35C5C', borderRadius: 4 }
     ]
   };
 
@@ -447,7 +447,9 @@ export default function App() {
       
       let sumForMonth = 0;
       contasFixas.forEach(f => {
-        if(f.tipo_valor === 'PARCELAMENTO' && f.mes_inicio && f.parcelas_totais) {
+        if (f.tipo_valor === 'FIXO' || f.tipo_valor === 'VARIAVEL') {
+            sumForMonth += f.valor_estimado;
+        } else if(f.tipo_valor === 'PARCELAMENTO' && f.mes_inicio && f.parcelas_totais) {
           const [sY, sM] = f.mes_inicio.split('-').map(Number);
           const diff = (targetY - sY)*12 + (targetM - sM);
           if(diff >= 0 && diff < f.parcelas_totais) {
@@ -691,8 +693,8 @@ export default function App() {
 
                 {/* Projeção de Alívio */}
                 <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col">
-                  <h3 className="text-lg font-medium text-gray-800 mb-1">Projeção de Alívio (Parcelamentos)</h3>
-                  <p className="text-sm text-gray-400 mb-4">Parcelamentos ativos.</p>
+                  <h3 className="text-lg font-medium text-gray-800 mb-1">Projeção de Contas Fixas</h3>
+                  <p className="text-sm text-gray-400 mb-4">Evolução do seu custo de vida nos próximos meses.</p>
                   <div className="h-48 w-full">
                     <Line data={reliefLineData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} />
                   </div>

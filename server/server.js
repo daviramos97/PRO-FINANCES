@@ -106,13 +106,37 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     const maxKmRow = await db.get("SELECT MAX(km_final) as max_km FROM uber_logs");
     const max_km = maxKmRow?.max_km || 0;
 
+    // 5. Histórico de 6 meses para o gráfico
+    const history = [];
+    const [cy, cm] = mesAno.split('-').map(Number);
+    for (let i = 5; i >= 0; i--) {
+        let m = cm - i;
+        let y = cy;
+        if (m <= 0) {
+            m += 12;
+            y -= 1;
+        }
+        const targetMes = `${y}-${String(m).padStart(2, '0')}`;
+        
+        const hDesp = await db.get("SELECT SUM(valor) as total FROM despesas WHERE vencimento LIKE ?", [`${targetMes}%`]);
+        const hRec = await db.get("SELECT SUM(valor) as total FROM receitas WHERE data LIKE ?", [`${targetMes}%`]);
+        const hUber = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${targetMes}%`]);
+        
+        history.push({
+            month: `${String(m).padStart(2, '0')}/${y}`,
+            entradas: (hRec?.total || 0) + (hUber?.total || 0),
+            saidas: hDesp?.total || 0
+        });
+    }
+
     res.json({
       comprometido,
       breakEven,
       projecaoSobras,
       max_km,
       receitasRecebidas,
-      despesasPagas
+      despesasPagas,
+      history
     });
   } catch (error) {
     console.error(error);
