@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Wallet, LayoutDashboard, Car, AlertTriangle, Settings, Calendar, 
-  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft
+  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard
 } from 'lucide-react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import 'chart.js/auto';
 import UberHub from './components/UberHub';
+import CardsHub from './components/CardsHub';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState(() => localStorage.getItem('profinances_currentPage') || 'dashboard');
@@ -25,6 +26,7 @@ export default function App() {
   const [deleteReceitaId, setDeleteReceitaId] = useState(null);
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
   const [contasFixas, setContasFixas] = useState([]);
+  const [reliefDataState, setReliefDataState] = useState({ labels: [], data: [] });
   const [settings, setSettings] = useState({
     meta_faturamento_pessoal: '5000', meta_mes_uber: '2500', meta_hora_uber: '35', meta_km_uber: '2', jornada_semanal_uber: '5', km_troca_oleo: '0', responsaveis: 'Davi, Larissa', categorias_despesas: 'Moradia, Alimentação, Carro, Educação, Lazer, Outros'
   });
@@ -74,6 +76,15 @@ export default function App() {
     fetch(`/api/contas_fixas`).then(res => res.json()).then(setContasFixas).catch(console.error);
     fetch(`/api/settings`).then(res => res.json()).then(data => {
       if(Object.keys(data).length > 0) setSettings(data);
+    }).catch(console.error);
+    fetch(`/api/relief/${filterMonth}`).then(res => res.json()).then(data => {
+      setReliefDataState({
+        labels: data.map(r => {
+          const [y, m] = r.month.split('-');
+          return `${m}/${y}`;
+        }),
+        data: data.map(r => r.total)
+      });
     }).catch(console.error);
   };
   useEffect(() => {
@@ -435,42 +446,13 @@ export default function App() {
     }]
   };
 
-  // 6 Meses de projeção de parcelamentos
-  const getReliefData = () => {
-    const labels = [];
-    const data = [];
-    const [currY, currM] = filterMonth.split('-').map(Number);
-    for(let i=0; i<6; i++) {
-      let targetM = currM + i;
-      let targetY = currY;
-      if(targetM > 12) { targetM -= 12; targetY += 1; }
-      
-      labels.push(`${String(targetM).padStart(2, '0')}/${targetY}`);
-      
-      let sumForMonth = 0;
-      contasFixas.forEach(f => {
-        if (f.tipo_valor === 'FIXO' || f.tipo_valor === 'VARIAVEL') {
-            sumForMonth += f.valor_estimado;
-        } else if(f.tipo_valor === 'PARCELAMENTO' && f.mes_inicio && f.parcelas_totais) {
-          const [sY, sM] = f.mes_inicio.split('-').map(Number);
-          const diff = (targetY - sY)*12 + (targetM - sM);
-          if(diff >= 0 && diff < f.parcelas_totais) {
-            sumForMonth += f.valor_estimado;
-          }
-        }
-      });
-      data.push(sumForMonth);
-    }
-    return { labels, data };
-  };
-
-  const reliefProjection = getReliefData();
+  // 6 Meses de projeção (agora vindo do backend)
   const reliefLineData = {
-    labels: reliefProjection.labels,
+    labels: reliefDataState.labels,
     datasets: [{
-      label: 'Valor Total de Parcelas (R$)',
-      data: reliefProjection.data,
-      borderColor: '#7A8B76',
+        label: 'Contas Fixas Projetadas (R$)',
+        data: reliefDataState.data,
+        borderColor: '#C87941',
       backgroundColor: 'rgba(122, 139, 118, 0.1)',
       tension: 0.3,
       fill: true
@@ -505,6 +487,10 @@ export default function App() {
             <TrendingUp className="w-5 h-5 mr-4 opacity-70" />
             <span className="font-medium text-sm tracking-wide">Receitas</span>
           </button>
+          <button onClick={() => setCurrentPage('cartoes')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'cartoes' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+            <CreditCard className="w-5 h-5 mr-4 opacity-70" />
+            <span className="font-medium text-sm tracking-wide">Cartões</span>
+          </button>
           <button onClick={() => setCurrentPage('payables')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'payables' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
             <List className="w-5 h-5 mr-4 opacity-70" />
             <span className="font-medium text-sm tracking-wide">Contas a Pagar</span>
@@ -533,6 +519,7 @@ export default function App() {
               {currentPage === 'incomes' && 'Receitas'}
               {currentPage === 'fixed' && 'Configurar Contas Fixas'}
               {currentPage === 'uber' && 'Uber Hub - Frota & Corridas'}
+              {currentPage === 'cartoes' && 'Gestão de Cartões'}
             </h1>
           </div>
 
@@ -722,6 +709,13 @@ export default function App() {
                 metaUberSemanal={metaUberSemanalDinamica}
                 lucroMes={uberLucroMes}
               />
+            </div>
+          )}
+
+          {/* CARTÕES HUB */}
+          {currentPage === 'cartoes' && (
+            <div className="animate-fade-in">
+              <CardsHub filterMonth={filterMonth} />
             </div>
           )}
 

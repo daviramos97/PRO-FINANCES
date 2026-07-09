@@ -91,6 +91,34 @@ export async function setupDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS card_purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      amount REAL NOT NULL,
+      purchase_date TEXT NOT NULL,
+      installments INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (card_id) REFERENCES credit_cards (id)
+    )
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS card_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id INTEGER NOT NULL,
+      month_year TEXT NOT NULL,
+      status TEXT DEFAULT 'aberta', -- aberta, fechada, paga
+      paid_amount REAL DEFAULT 0,
+      payment_date TEXT DEFAULT NULL,
+      FOREIGN KEY (card_id) REFERENCES credit_cards (id)
+    )
+  `);
+
+  // Semeando os cartões padrão solicitados
+  await db.run("INSERT OR IGNORE INTO credit_cards (id, name, limit_amount, closing_day, due_day, color) VALUES (1, 'Santander (Davi)', 5000, 25, 5, '#E52320')");
+  await db.run("INSERT OR IGNORE INTO credit_cards (id, name, limit_amount, closing_day, due_day, color) VALUES (2, 'Itaú (Lari)', 3000, 10, 20, '#EC7000')");
+
   // 6. Dívidas (Empréstimos/Financiamentos)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS debts (

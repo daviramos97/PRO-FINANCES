@@ -61,6 +61,112 @@ async function projectFixedBillsForMonth(mesAno) {
 }
 
 // ==========================================
+// FUNÇÕES DE FATURA DE CARTÃO
+// ==========================================
+function getInvoiceMonth(dataCompra, numParcela, diaFechamento) {
+  const [y, m, d] = dataCompra.split('-').map(Number);
+  let baseM = m;
+  let baseY = y;
+  if (d >= diaFechamento) baseM += 1;
+  baseM += numParcela;
+  while (baseM > 12) { baseM -= 12; baseY += 1; }
+  return `${baseY}-${String(baseM).padStart(2, '0')}`;
+}
+
+async function getFaturasForMonth(db, mesAno) {
+  const faturas = [];
+  const cards = await db.all("SELECT * FROM credit_cards");
+  for (const card of cards) {
+    const purchases = await db.all("SELECT * FROM card_purchases WHERE card_id = ?", [card.id]);
+    let totalInvoice = 0;
+    purchases.forEach(p => {
+      const valorParcela = p.amount / p.installments;
+      for (let i = 0; i < p.installments; i++) {
+        if (getInvoiceMonth(p.purchase_date, i, card.closing_day) === mesAno) {
+          totalInvoice += valorParcela;
+        }
+      }
+    });
+    if (totalInvoice > 0) {
+      const invoiceRecord = await db.get("SELECT * FROM card_invoices WHERE card_id = ? AND month_year = ?", [card.id, mesAno]);
+      const statusFatura = invoiceRecord?.status === 'paga' ? 'pago' : 'pendente';
+      const dataPagamentoFatura = invoiceRecord?.payment_date || null;
+      
+      const vDate = new Date(`${mesAno}-01`);
+      let y = vDate.getFullYear();
+      let m = vDate.getMonth() + 1;
+      if (card.due_day < card.closing_day) {
+        m += 1;
+        if (m > 12) { m -= 12; y += 1; }
+      }
+      const vencimentoStr = `${y}-${String(m).padStart(2, '0')}-${String(card.due_day).padStart(2, '0')}`;
+      
+      faturas.push({
+        id: `fatura-${card.id}-${mesAno}`,
+        nome: `Fatura ${card.name}`,
+        valor: totalInvoice,
+        vencimento: vencimentoStr,
+        categoria: 'Cartão de Crédito',
+        status: statusFatura,
+        forma_pagamento: 'Cartão',
+        data_pagamento: dataPagamentoFatura,
+        is_fatura: true,
+        card_id: card.id
+      });
+    }
+  }
+  return faturas;
+}
+
+// ==========================================
+// ENDPOINT DE PROJEÇÃO DE ALÍVIO
+// ==========================================
+app.get('/api/relief/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const mesAno = req.params.mes_ano;
+    const [currY, currM] = mesAno.split('-').map(Number);
+    const result = [];
+    
+    const contasFixas = await db.all("SELECT * FROM contas_fixas");
+    
+    for (let i = 0; i < 6; i++) {
+      let targetM = currM + i;
+      let targetY = currY;
+      if (targetM > 12) { targetM -= 12; targetY += 1; }
+      
+      const targetMesAno = `${targetY}-${String(targetM).padStart(2, '0')}`;
+      let sumForMonth = 0;
+      
+      // 1. Soma as contas fixas
+      contasFixas.forEach(f => {
+        if (f.tipo_valor === 'FIXO' || f.tipo_valor === 'VARIAVEL') {
+            sumForMonth += f.valor_estimado;
+        } else if(f.tipo_valor === 'PARCELAMENTO' && f.mes_inicio && f.parcelas_totais) {
+          const [sY, sM] = f.mes_inicio.split('-').map(Number);
+          const diff = (targetY - sY)*12 + (targetM - sM);
+          if(diff >= 0 && diff < f.parcelas_totais) {
+            sumForMonth += f.valor_estimado;
+          }
+        }
+      });
+      
+      // 2. Soma as faturas de cartão daquele mês projetado
+      const faturas = await getFaturasForMonth(db, targetMesAno);
+      faturas.forEach(f => {
+          sumForMonth += f.valor;
+      });
+      
+      result.push({ month: targetMesAno, total: sumForMonth });
+    }
+    
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+// ==========================================
 // ENDPOINT DE AGREGAÇÃO (DASHBOARD)
 // ==========================================
 app.get('/api/dashboard/:mes_ano', async (req, res) => {
@@ -73,11 +179,25 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
 
     // 1. Comprometido (soma de contas a pagar no mes, status = pendente)
     const compRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE status = 'pendente' AND vencimento LIKE ?", [`${mesAno}%`]);
-    const comprometido = compRow.total || 0;
+    let comprometido = compRow.total || 0;
 
     // Buscas no BD para os novos cálculos
     const despPagasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE status = 'pago' AND vencimento LIKE ?", [`${mesAno}%`]);
     const todasDespesasRow = await db.get("SELECT SUM(valor) as total FROM despesas WHERE vencimento LIKE ?", [`${mesAno}%`]);
+    
+    // Injeta faturas no dashboard
+    const faturas = await getFaturasForMonth(db, mesAno);
+    let totalFaturas = 0;
+    let faturasPagas = 0;
+    let faturasPendentes = 0;
+    
+    faturas.forEach(f => {
+      totalFaturas += f.valor;
+      if (f.status === 'pago') faturasPagas += f.valor;
+      else faturasPendentes += f.valor;
+    });
+
+    comprometido += faturasPendentes;
     
     const recRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE data LIKE ?", [`${mesAno}%`]);
     const recRecebidasRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE status = 'recebido' AND data LIKE ?", [`${mesAno}%`]);
@@ -86,8 +206,8 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     const metaUberRow = await db.get("SELECT value FROM settings WHERE key = 'meta_mes_uber'");
     const metaUber = parseFloat(metaUberRow?.value || 0);
 
-    const todasDespesas = todasDespesasRow.total || 0;
-    const despesasPagas = despPagasRow.total || 0;
+    const todasDespesas = (todasDespesasRow.total || 0) + totalFaturas;
+    const despesasPagas = (despPagasRow.total || 0) + faturasPagas;
     const receitasRecebidas = (recRecebidasRow.total || 0) + (uberRow.total || 0);
 
     // 2. Novo card central: Ponto de Equilíbrio (Break-even)
@@ -153,7 +273,18 @@ app.get('/api/despesas/:mes_ano', async (req, res) => {
     const mesAno = req.params.mes_ano;
     await projectFixedBillsForMonth(mesAno);
     const despesas = await db.all("SELECT * FROM despesas WHERE vencimento LIKE ? ORDER BY status DESC, vencimento ASC", [`${mesAno}%`]);
-    res.json(despesas);
+    
+    const faturas = await getFaturasForMonth(db, mesAno);
+    const todas = [...despesas, ...faturas].sort((a, b) => {
+      if (a.status === 'pendente' && b.status === 'pago') return -1;
+      if (a.status === 'pago' && b.status === 'pendente') return 1;
+      if (a.status === 'pago' && b.status === 'pago') {
+        return new Date(b.data_pagamento) - new Date(a.data_pagamento);
+      }
+      return new Date(a.vencimento) - new Date(b.vencimento);
+    });
+
+    res.json(todas);
   } catch (error) {
     res.status(500).json({ error: 'Erro' });
   }
@@ -177,6 +308,22 @@ app.put('/api/despesas/:id', async (req, res) => {
   try {
     const { status, valor, data_pagamento, nome, vencimento, categoria, forma_pagamento } = req.body;
     const db = await openDb();
+
+    // Verifica se é uma Fatura injetada (começa com fatura-)
+    if (String(req.params.id).startsWith('fatura-')) {
+      const parts = req.params.id.split('-');
+      const cardId = parts[1];
+      const mesAno = `${parts[2]}-${parts[3]}`;
+      const invStatus = status === 'pago' ? 'paga' : 'aberta';
+      
+      const existing = await db.get("SELECT id FROM card_invoices WHERE card_id = ? AND month_year = ?", [cardId, mesAno]);
+      if (existing) {
+        await db.run("UPDATE card_invoices SET status=?, paid_amount=?, payment_date=? WHERE id=?", [invStatus, valor, data_pagamento, existing.id]);
+      } else {
+        await db.run("INSERT INTO card_invoices (card_id, month_year, status, paid_amount, payment_date) VALUES (?, ?, ?, ?, ?)", [cardId, mesAno, invStatus, valor, data_pagamento]);
+      }
+      return res.json({ success: true });
+    }
 
     // Check if we are doing a full edit or just a status change
     if (nome !== undefined && vencimento !== undefined) {
@@ -411,9 +558,110 @@ app.delete('/api/contas_fixas/:id', async (req, res) => {
 });
 
 // ==========================================
-// CARTÕES, DÍVIDAS E CONFIGURAÇÕES
+// CARTÕES DE CRÉDITO
 // ==========================================
-// (Cartões e dividas simplificados para manter contexto, mantidos como antes mas via tabelas)
+
+// Removido getInvoiceMonth redundante
+
+app.get('/api/cards', async (req, res) => {
+  try {
+    const db = await openDb();
+    const cards = await db.all("SELECT * FROM credit_cards");
+    res.json(cards);
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.post('/api/cards', async (req, res) => {
+  try {
+    const db = await openDb();
+    const { name, limit_amount, closing_day, due_day, color } = req.body;
+    await db.run(
+      "INSERT INTO credit_cards (name, limit_amount, closing_day, due_day, color) VALUES (?, ?, ?, ?, ?)",
+      [name, limit_amount, closing_day, due_day, color || '#C87941']
+    );
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.put('/api/cards/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    const { name, limit_amount, closing_day, due_day, color } = req.body;
+    await db.run(
+      "UPDATE credit_cards SET name=?, limit_amount=?, closing_day=?, due_day=?, color=? WHERE id=?",
+      [name, limit_amount, closing_day, due_day, color, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.delete('/api/cards/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    await db.run("DELETE FROM credit_cards WHERE id=?", [req.params.id]);
+    await db.run("DELETE FROM card_purchases WHERE card_id=?", [req.params.id]);
+    await db.run("DELETE FROM card_invoices WHERE card_id=?", [req.params.id]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.get('/api/cards/:id/invoice/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const cardId = req.params.id;
+    const mesAno = req.params.mes_ano;
+    
+    const card = await db.get("SELECT * FROM credit_cards WHERE id = ?", [cardId]);
+    if (!card) return res.status(404).json({ error: 'Card not found' });
+
+    const purchases = await db.all("SELECT * FROM card_purchases WHERE card_id = ?", [cardId]);
+    
+    let totalInvoice = 0;
+    const invoiceItems = [];
+
+    purchases.forEach(p => {
+      const valorParcela = p.amount / p.installments;
+      for (let i = 0; i < p.installments; i++) {
+        const invMonth = getInvoiceMonth(p.purchase_date, i, card.closing_day);
+        if (invMonth === mesAno) {
+          totalInvoice += valorParcela;
+          invoiceItems.push({
+            id: p.id,
+            description: p.description,
+            purchase_date: p.purchase_date,
+            installment_amount: valorParcela,
+            current_installment: i + 1,
+            total_installments: p.installments
+          });
+        }
+      }
+    });
+
+    res.json({
+      card,
+      mes_ano: mesAno,
+      total: totalInvoice,
+      items: invoiceItems
+    });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.post('/api/cards/:id/purchases', async (req, res) => {
+  try {
+    const cardId = req.params.id;
+    const { description, amount, purchase_date, installments } = req.body;
+    const db = await openDb();
+    await db.run(
+      'INSERT INTO card_purchases (card_id, description, amount, purchase_date, installments) VALUES (?, ?, ?, ?, ?)',
+      [cardId, description, amount, purchase_date, installments]
+    );
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+// ==========================================
+// DÍVIDAS E CONFIGURAÇÕES
+// ==========================================
 app.get('/api/debts', async (req, res) => {
   try {
     const db = await openDb();
