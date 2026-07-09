@@ -94,15 +94,6 @@ export default function App() {
     fetchData();
   };
 
-  const payDespesaInstant = async (despesa) => {
-    await fetch(`/api/despesas/${despesa.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'pago', valor: despesa.valor, data_pagamento: new Date().toISOString().split('T')[0] })
-    });
-    fetchData();
-  };
-
   const togglePayableSelection = (id) => {
     if (selectedPayables.includes(id)) {
       setSelectedPayables(selectedPayables.filter(item => item !== id));
@@ -769,7 +760,10 @@ export default function App() {
                         <tr key={d.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isPaid ? 'opacity-50' : ''}`}>
                           <td className="py-4 px-6 text-center">
                             {isPaid ? (
-                              <button onClick={() => unpayDespesa(d)} title="Desfazer Pagamento"><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button>
+                              <div className="flex flex-col items-center justify-center">
+                                <button onClick={() => unpayDespesa(d)} title="Desfazer Pagamento"><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button>
+                                {d.data_pagamento && <span className="text-[9px] text-[#7A8B76] font-bold mt-1 tracking-widest uppercase block">{d.data_pagamento.split('-').reverse().join('/')}</span>}
+                              </div>
                             ) : (
                               isSelectionMode ? (
                                 <input 
@@ -779,7 +773,7 @@ export default function App() {
                                   onChange={() => togglePayableSelection(d.id)}
                                 />
                               ) : (
-                                <button onClick={() => payDespesaInstant(d)} className="bg-[#7A8B76] text-white text-[11px] px-3 py-1.5 rounded-sm font-medium hover:bg-[#687a64] transition-colors mx-auto block uppercase tracking-wide shadow-sm" title="Pagar Conta">Pagar</button>
+                                <button onClick={() => openPayModal(d)} className="bg-[#7A8B76] text-white text-[11px] px-3 py-1.5 rounded-sm font-medium hover:bg-[#687a64] transition-colors mx-auto block uppercase tracking-wide shadow-sm" title="Pagar Conta">Pagar</button>
                               )
                             )}
                           </td>
