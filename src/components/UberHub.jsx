@@ -724,9 +724,6 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
                           <span className="flex items-center" title="Horas Online"><Clock className="w-3.5 h-3.5 mr-1 opacity-60"/>{log.tempo_online}h</span>
                           <span className="flex items-center" title="Corridas"><User className="w-3.5 h-3.5 mr-1 opacity-60"/>{log.corridas}</span>
                           <span className="flex items-center" title="Km Rodados"><MapPin className="w-3.5 h-3.5 mr-1 opacity-60"/>{log.km} km</span>
-                          {(log.km_inicial > 0 || log.km_final > 0) && (
-                            <span className="flex items-center text-gray-400 text-[10px] ml-1" title="Odômetros">({log.km_inicial} → {log.km_final})</span>
-                          )}
                         </div>
                       </div>
                     </div>
