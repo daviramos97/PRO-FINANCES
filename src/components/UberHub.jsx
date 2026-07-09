@@ -42,19 +42,24 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
 
   // LOCAL FETCH
   const fetchLocalLogs = async () => {
-    let url = '/api/uber_logs';
-    if (filterType === 'month') {
-      url += `?mes_ano=${localMonth}`;
-    } else if (filterType === 'range') {
-      url += `?start=${startDate}&end=${endDate}`;
-    }
-    
     try {
+      let url = '/api/uber_logs';
+      if (filterType === 'month') {
+        url += `?mes_ano=${localMonth}`;
+      } else if (filterType === 'range') {
+        url += `?start=${startDate}&end=${endDate}`;
+      }
       const res = await fetch(url);
       const data = await res.json();
-      setUberLogs(data);
+      if (Array.isArray(data)) {
+        setUberLogs(data);
+      } else {
+        console.error("API returned non-array:", data);
+        setUberLogs([]);
+      }
     } catch (e) {
-      console.error(e);
+      console.error("Error fetching logs:", e);
+      setUberLogs([]);
     }
   };
 
