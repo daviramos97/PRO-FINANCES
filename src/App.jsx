@@ -405,11 +405,13 @@ export default function App() {
     }]
   };
 
+  const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  
   const barData = {
-    labels: dashboard?.history ? dashboard.history.map(h => h.month) : ['Resumo do Mês'],
+    labels: dashboard?.history ? dashboard.history.map(h => monthNames[parseInt(h.month.split('/')[0], 10) - 1] || h.month) : ['Resumo do Mês'],
     datasets: [
-      { label: 'Entradas (R$)', data: dashboard?.history ? dashboard.history.map(h => h.entradas) : [receitasTotais], backgroundColor: '#7A8B76', borderRadius: 4 },
-      { label: 'Saídas (R$)', data: dashboard?.history ? dashboard.history.map(h => h.saidas) : [despesasTotaisMes], backgroundColor: '#A35C5C', borderRadius: 4 }
+      { label: 'Saídas (R$)', data: dashboard?.history ? dashboard.history.map(h => h.saidas) : [despesasTotaisMes], backgroundColor: '#A35C5C', borderRadius: 4 },
+      { label: 'Entradas (R$)', data: dashboard?.history ? dashboard.history.map(h => h.entradas) : [receitasTotais], backgroundColor: '#7A8B76', borderRadius: 4 }
     ]
   };
 
