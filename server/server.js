@@ -102,10 +102,15 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     const projecaoReceitas = Math.max(receitasRecebidas, metaPessoal);
     const projecaoSobras = projecaoReceitas - todasDespesas;
 
+    // 4. Busca o maior KM registrado para controle de troca de óleo
+    const maxKmRow = await db.get("SELECT MAX(km_final) as max_km FROM uber_logs");
+    const max_km = maxKmRow?.max_km || 0;
+
     res.json({
       comprometido,
       breakEven,
       projecaoSobras,
+      max_km,
       receitasRecebidas,
       despesasPagas
     });
@@ -255,7 +260,7 @@ app.get('/api/uber_logs', async (req, res) => {
 
 app.post('/api/uber_logs', async (req, res) => {
   try {
-    const { data, aplicativo, corridas, km, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
+    const { data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
     // Cálculo do Lucro Líquido no Backend
     const bruto = parseFloat(valor_bruto) || 0;
     const bns = parseFloat(bonus) || 0;
@@ -263,12 +268,16 @@ app.post('/api/uber_logs', async (req, res) => {
     const comb = parseFloat(combustivel) || 0;
     const manu = parseFloat(manutencao) || 0;
     
+    const kmIni = parseFloat(km_inicial) || 0;
+    const kmFin = parseFloat(km_final) || 0;
+    const finalKmCalculated = (km !== undefined && km !== '') ? parseFloat(km) : (kmFin >= kmIni && kmFin > 0 ? kmFin - kmIni : 0);
+    
     const lucro_liquido = (bruto + bns + grj) - (comb + manu);
 
     const db = await openDb();
     await db.run(
-      'INSERT INTO uber_logs (data, aplicativo, corridas, km, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, lucro_liquido) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [data, aplicativo, corridas, km, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido]
+      'INSERT INTO uber_logs (data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, lucro_liquido) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [data, aplicativo, corridas, finalKmCalculated, kmIni, kmFin, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido]
     );
     res.json({ success: true, lucro_liquido });
   } catch (error) {
@@ -278,20 +287,24 @@ app.post('/api/uber_logs', async (req, res) => {
 
 app.put('/api/uber_logs/:id', async (req, res) => {
   try {
-    const { data, aplicativo, corridas, km, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
+    const { data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
     
     const bruto = parseFloat(valor_bruto) || 0;
     const bns = parseFloat(bonus) || 0;
     const grj = parseFloat(gorjeta) || 0;
     const comb = parseFloat(combustivel) || 0;
     const manu = parseFloat(manutencao) || 0;
+
+    const kmIni = parseFloat(km_inicial) || 0;
+    const kmFin = parseFloat(km_final) || 0;
+    const finalKmCalculated = (km !== undefined && km !== '') ? parseFloat(km) : (kmFin >= kmIni && kmFin > 0 ? kmFin - kmIni : 0);
     
     const lucro_liquido = (bruto + bns + grj) - (comb + manu);
 
     const db = await openDb();
     await db.run(
-      'UPDATE uber_logs SET data = ?, aplicativo = ?, corridas = ?, km = ?, tempo_online = ?, valor_bruto = ?, combustivel = ?, manutencao = ?, bonus = ?, gorjeta = ?, lucro_liquido = ? WHERE id = ?',
-      [data, aplicativo, corridas, km, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido, req.params.id]
+      'UPDATE uber_logs SET data = ?, aplicativo = ?, corridas = ?, km = ?, km_inicial = ?, km_final = ?, tempo_online = ?, valor_bruto = ?, combustivel = ?, manutencao = ?, bonus = ?, gorjeta = ?, lucro_liquido = ? WHERE id = ?',
+      [data, aplicativo, corridas, finalKmCalculated, kmIni, kmFin, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido, req.params.id]
     );
     res.json({ success: true, lucro_liquido });
   } catch (error) {

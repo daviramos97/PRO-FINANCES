@@ -26,7 +26,7 @@ export default function App() {
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
   const [contasFixas, setContasFixas] = useState([]);
   const [settings, setSettings] = useState({
-    meta_faturamento_pessoal: '5000', meta_mes_uber: '2500', meta_hora_uber: '35', meta_km_uber: '2', jornada_semanal_uber: '5', responsaveis: 'Davi, Larissa', categorias_despesas: 'Moradia, Alimentação, Carro, Educação, Lazer, Outros'
+    meta_faturamento_pessoal: '5000', meta_mes_uber: '2500', meta_hora_uber: '35', meta_km_uber: '2', jornada_semanal_uber: '5', km_troca_oleo: '0', responsaveis: 'Davi, Larissa', categorias_despesas: 'Moradia, Alimentação, Carro, Educação, Lazer, Outros'
   });
   
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -463,6 +463,12 @@ export default function App() {
   };
 
 
+  const kmTrocaOleo = parseFloat(settings.km_troca_oleo || 0);
+  const maxKm = parseFloat(dashboard?.max_km || 0);
+  const showOilAlert = kmTrocaOleo > 0 && maxKm > 0 && (kmTrocaOleo - maxKm <= 1000);
+  const oilAlertRemaining = kmTrocaOleo - maxKm;
+  const oilAlertColor = oilAlertRemaining <= 100 ? 'bg-red-500' : 'bg-[#C87941]';
+
   return (
     <div className={`flex h-screen w-full ${colors.bg} overflow-hidden text-gray-800 font-sans`}>
       {/* SIDEBAR MINIMALISTA */}
@@ -504,6 +510,15 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col h-full overflow-y-auto relative">
+        {showOilAlert && (
+          <div className={`w-full text-white text-sm font-medium py-2 px-10 flex items-center justify-between ${oilAlertColor} shadow-md z-40`}>
+            <div className="flex items-center">
+              <Car className="w-4 h-4 mr-2" />
+              Atenção: {oilAlertRemaining <= 0 ? 'Já passou do momento de trocar o óleo!' : `Faltam apenas ${Math.max(0, oilAlertRemaining).toLocaleString('pt-BR')} KM para a próxima troca de óleo!`}
+            </div>
+            <button onClick={() => { setIsSettingsModalOpen(true); setActiveSettingsTab('uber'); }} className="text-white hover:text-gray-200 underline text-xs">Atualizar Configuração</button>
+          </div>
+        )}
         <header className="pt-8 pb-6 flex items-center justify-between px-10 sticky top-0 z-30 bg-[#F9F8F6]">
           <div className="flex items-center space-x-4">
             <h1 className="text-2xl font-light text-gray-800">
@@ -1026,6 +1041,11 @@ export default function App() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Jornada Semanal (Dias)</label>
                           <input type="number" min="1" max="7" value={settings.jornada_semanal_uber} onChange={e => setSettings({...settings, jornada_semanal_uber: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Próxima Troca de Óleo (Km)</label>
+                          <input type="number" value={settings.km_troca_oleo} onChange={e => setSettings({...settings, km_troca_oleo: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-md bg-white focus:outline-none focus:border-[#C87941]" placeholder="Ex: 50000" />
+                          <p className="text-xs text-gray-400 mt-1">Avisa quando faltarem 1.000km.</p>
                         </div>
                       </div>
                     </div>

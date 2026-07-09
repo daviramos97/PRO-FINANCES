@@ -75,8 +75,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   const [editingId, setEditingId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [form, setForm] = useState({
-    data: new Date().toISOString().split('T')[0],
-    aplicativo: 'Uber', corridas: '', km: '', tempo_online: '00:00',
+    data: new Date().toISOString().split('T')[0], aplicativo: 'Uber', corridas: '', km: '', km_inicial: '', km_final: '', tempo_online: '00:00',
     valor_bruto: '', combustivel: '', manutencao: '', bonus: '', gorjeta: ''
   });
 
@@ -217,7 +216,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   const handleOpenNewModal = () => {
     setEditingId(null);
     setForm({
-      data: new Date().toISOString().split('T')[0], aplicativo: 'Uber', corridas: '', km: '', tempo_online: '00:00',
+      data: new Date().toISOString().split('T')[0], aplicativo: 'Uber', corridas: '', km: '', km_inicial: '', km_final: '', tempo_online: '00:00',
       valor_bruto: '', combustivel: '', manutencao: '', bonus: '', gorjeta: ''
     });
     setIsModalOpen(true);
@@ -226,7 +225,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   const handleEdit = (log) => {
     setEditingId(log.id);
     setForm({
-      data: log.data, aplicativo: log.aplicativo, corridas: log.corridas, km: log.km, tempo_online: log.tempo_online,
+      data: log.data, aplicativo: log.aplicativo, corridas: log.corridas, km: log.km, km_inicial: log.km_inicial || '', km_final: log.km_final || '', tempo_online: log.tempo_online,
       valor_bruto: log.valor_bruto, combustivel: log.combustivel, manutencao: log.manutencao, 
       bonus: log.bonus, gorjeta: log.gorjeta
     });
@@ -720,6 +719,9 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
                           <span className="flex items-center" title="Horas Online"><Clock className="w-3.5 h-3.5 mr-1 opacity-60"/>{log.tempo_online}h</span>
                           <span className="flex items-center" title="Corridas"><User className="w-3.5 h-3.5 mr-1 opacity-60"/>{log.corridas}</span>
                           <span className="flex items-center" title="Km Rodados"><MapPin className="w-3.5 h-3.5 mr-1 opacity-60"/>{log.km} km</span>
+                          {(log.km_inicial > 0 || log.km_final > 0) && (
+                            <span className="flex items-center text-gray-400 text-[10px] ml-1" title="Odômetros">({log.km_inicial} → {log.km_final})</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -801,7 +803,11 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
                   <div className="grid grid-cols-3 gap-3">
                     <input type="time" title="Horas Online" value={form.tempo_online} onChange={e => setForm({...form, tempo_online: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
                     <input type="number" title="Corridas" placeholder="Viagens" value={form.corridas} onChange={e => setForm({...form, corridas: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
-                    <input type="number" step="0.1" title="Km Rodados" placeholder="KM" value={form.km} onChange={e => setForm({...form, km: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
+                    <input type="number" step="0.1" title="Km Rodados (Calculado)" placeholder="KM Total" value={form.km} onChange={e => setForm({...form, km: e.target.value})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" required />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <input type="number" step="0.1" title="Odômetro Inicial" placeholder="Odômetro Inicial" value={form.km_inicial} onChange={e => setForm({...form, km_inicial: e.target.value, km: (form.km_final && e.target.value) ? Math.max(0, parseFloat(form.km_final) - parseFloat(e.target.value)) : form.km})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" />
+                    <input type="number" step="0.1" title="Odômetro Final" placeholder="Odômetro Final" value={form.km_final} onChange={e => setForm({...form, km_final: e.target.value, km: (e.target.value && form.km_inicial) ? Math.max(0, parseFloat(e.target.value) - parseFloat(form.km_inicial)) : form.km})} className="w-full p-2.5 border border-gray-200 rounded outline-none text-sm text-gray-800 bg-gray-50 focus:border-[#C87941]" />
                   </div>
                 </div>
 

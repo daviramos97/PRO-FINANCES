@@ -124,4 +124,8 @@ export async function setupDb() {
   try { await db.exec("ALTER TABLE contas_fixas ADD COLUMN mes_inicio TEXT DEFAULT NULL"); } catch(e) { /* ignore if exists */ }
   try { await db.exec("ALTER TABLE contas_fixas ADD COLUMN categoria TEXT DEFAULT 'Outros'"); } catch(e) { /* ignore if exists */ }
   try { await db.exec("ALTER TABLE despesas ADD COLUMN data_pagamento TEXT DEFAULT NULL"); } catch(e) { /* ignore if exists */ }
+  
+  // Novas migrations para Controle de KM
+  try { await db.exec("ALTER TABLE uber_logs ADD COLUMN km_inicial REAL DEFAULT 0"); } catch(e) { /* ignore */ }
+  try { await db.exec("ALTER TABLE uber_logs ADD COLUMN km_final REAL DEFAULT 0"); } catch(e) { /* ignore */ }
 }
