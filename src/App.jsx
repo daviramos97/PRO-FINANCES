@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wallet, LayoutDashboard, Car, AlertTriangle, Settings, Calendar, 
-  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard
+  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut
 } from 'lucide-react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import 'chart.js/auto';
@@ -22,6 +22,7 @@ export default function App() {
   // Estado dos Dados
   const [dashboard, setDashboard] = useState({ comprometido: 0, realizado: 0, sobras: 0, receitasRecebidas: 0, despesasPagas: 0 });
   const [despesas, setDespesas] = useState([]);
+  const [cards, setCards] = useState([]);
   const [selectedPayables, setSelectedPayables] = useState([]);
   const [deleteReceitaId, setDeleteReceitaId] = useState(null);
   const [receitas, setReceitas] = useState({ receitas: [], uber_total: 0 });
@@ -68,12 +69,15 @@ export default function App() {
         if (a.status === 'pendente') return a.vencimento.localeCompare(b.vencimento);
         const dateA = a.data_pagamento || a.vencimento;
         const dateB = b.data_pagamento || b.vencimento;
-        return dateB.localeCompare(dateA);
+        const cmp = dateB.localeCompare(dateA);
+        if (cmp !== 0) return cmp;
+        return b.id - a.id; // Desempate para garantir que a última alterada fique no topo se as datas forem exatas
       });
       setDespesas(sorted);
     }).catch(console.error);
     fetch(`/api/receitas/${filterMonth}`).then(res => res.json()).then(setReceitas).catch(console.error);
     fetch(`/api/contas_fixas`).then(res => res.json()).then(setContasFixas).catch(console.error);
+    fetch(`/api/cards`).then(res => res.json()).then(setCards).catch(console.error);
     fetch(`/api/settings`).then(res => res.json()).then(data => {
       if(Object.keys(data).length > 0) setSettings(data);
     }).catch(console.error);
@@ -107,10 +111,14 @@ export default function App() {
 
   const confirmPayDespesa = async (e) => {
     e.preventDefault();
+    // Anexa a hora atual à data de pagamento para garantir a ordenação cronológica de pagamento no frontend
+    const currentTime = new Date().toISOString().split('T')[1];
+    const fullPaymentDate = payForm.data_pagamento.includes('T') ? payForm.data_pagamento : `${payForm.data_pagamento}T${currentTime}`;
+
     await fetch(`/api/despesas/${despesaToPay.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'pago', valor: payForm.valor, data_pagamento: payForm.data_pagamento })
+      body: JSON.stringify({ status: 'pago', valor: payForm.valor, data_pagamento: fullPaymentDate })
     });
     setIsPayModalOpen(false);
     fetchData();
@@ -460,11 +468,80 @@ export default function App() {
   };
 
 
-  const kmTrocaOleo = parseFloat(settings.km_troca_oleo || 0);
-  const maxKm = parseFloat(dashboard?.max_km || 0);
-  const showOilAlert = kmTrocaOleo > 0 && maxKm > 0 && (kmTrocaOleo - maxKm <= 1000);
-  const oilAlertRemaining = kmTrocaOleo - maxKm;
-  const oilAlertColor = oilAlertRemaining <= 100 ? 'bg-red-500' : 'bg-[#C87941]';
+  // MOTOR DE NOTIFICAÇÕES (Notification Engine)
+  const notifications = useMemo(() => {
+    const notifs = [];
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const todayDay = today.getDate();
+
+    // 1. Contas Atrasadas e Vencendo Hoje
+    despesas.forEach(d => {
+      if (d.status === 'pendente') {
+        if (d.vencimento < todayStr) {
+          notifs.push({
+            id: `atraso-${d.id}`, type: 'error', icon: AlertTriangle,
+            title: 'Conta Atrasada',
+            description: `${d.nome} (R$ ${d.valor.toFixed(2)}) venceu dia ${d.vencimento.split('-').reverse().join('/')}.`
+          });
+        } else if (d.vencimento === todayStr) {
+          notifs.push({
+            id: `hoje-${d.id}`, type: 'warning', icon: Calendar,
+            title: 'Vencimento Hoje',
+            description: `${d.nome} vence hoje! Valor: R$ ${d.valor.toFixed(2)}.`
+          });
+        }
+      }
+    });
+
+    // 2. Alerta de Óleo
+    const kmTrocaOleo = parseFloat(settings.km_troca_oleo || 0);
+    const maxKm = parseFloat(dashboard?.max_km || 0);
+    if (kmTrocaOleo > 0 && maxKm > 0) {
+      const remaining = kmTrocaOleo - maxKm;
+      if (remaining <= 1000) {
+        notifs.push({
+          id: 'oleo', type: remaining <= 100 ? 'error' : 'warning', icon: Car,
+          title: 'Troca de Óleo',
+          description: remaining <= 0 ? 'Já passou da hora de trocar o óleo!' : `Faltam apenas ${Math.max(0, remaining).toLocaleString('pt-BR')} KM.`,
+          action: () => { setIsNotificationsOpen(false); setIsSettingsModalOpen(true); setActiveSettingsTab('uber'); }
+        });
+      }
+    }
+
+    // 3. Fechamento de Fatura do Cartão
+    cards.forEach(card => {
+      if (parseInt(card.closing_day, 10) === todayDay) {
+        notifs.push({
+          id: `card-${card.id}`, type: 'info', icon: CreditCard,
+          title: 'Fatura Fechada',
+          description: `A fatura do seu cartão ${card.name} fechou hoje.`
+        });
+      }
+    });
+
+    // 4. Projeção Negativa
+    if (reliefDataState.alivio < 0) {
+      notifs.push({
+        id: 'projecao', type: 'error', icon: TrendingDown,
+        title: 'Projeção no Vermelho',
+        description: 'Suas despesas fixas + faturas já ultrapassaram a renda prevista do mês atual.'
+      });
+    }
+
+    // 5. Meta do Uber Atingida (Mensal)
+    const metaUber = parseFloat(settings.meta_uber || 0);
+    const uberLucro = receitas.uber_total || 0;
+    if (metaUber > 0 && uberLucro >= metaUber) {
+      notifs.push({
+        id: 'meta-uber', type: 'success', icon: Trophy,
+        title: 'Meta do Uber Atingida! 🎉',
+        description: `Você bateu a meta mensal de R$ ${metaUber.toFixed(2)}.`
+      });
+    }
+
+    return notifs;
+  }, [despesas, settings, dashboard, cards, reliefDataState, receitas]);
 
   return (
     <div className={`flex h-screen w-full ${colors.bg} overflow-hidden text-gray-800 font-sans`}>
@@ -502,6 +579,10 @@ export default function App() {
         </nav>
         
         <div className="px-4 py-6 mt-auto border-t border-white/5">
+          <button onClick={() => window.close()} className={`w-full flex items-center px-4 py-3 mb-1 rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5`}>
+            <LogOut className="w-5 h-5 mr-4 opacity-70" />
+            <span className="font-medium text-sm tracking-wide">Sair</span>
+          </button>
           <button onClick={() => setIsSettingsModalOpen(true)} className={`w-full flex items-center px-4 py-3 rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5`}>
             <Settings className="w-5 h-5 mr-4 opacity-70" />
             <span className="font-medium text-sm tracking-wide">Configurações</span>
@@ -536,28 +617,40 @@ export default function App() {
             <div className="relative">
               <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="relative p-2 text-gray-400 hover:text-gray-800 transition-all">
                 <Bell className="w-5 h-5" />
-                {showOilAlert && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#F9F8F6]"></span>}
+                {notifications.length > 0 && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#F9F8F6]"></span>}
               </button>
               {isNotificationsOpen && (
                 <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden animate-fade-in">
                   <div className="p-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                     <span className="text-sm font-semibold text-gray-700">Notificações</span>
-                    {showOilAlert && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">1 Nova</span>}
+                    {notifications.length > 0 && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">{notifications.length} Novas</span>}
                   </div>
                   <div className="max-h-64 overflow-y-auto p-2">
-                    {showOilAlert ? (
-                      <div className={`p-3 rounded-md mb-2 flex items-start space-x-3 ${oilAlertColor.includes('red') ? 'bg-red-50' : 'bg-orange-50'}`}>
-                        <div className={`p-2 rounded-full ${oilAlertColor.includes('red') ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
-                          <Car className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className={`text-sm font-bold ${oilAlertColor.includes('red') ? 'text-red-800' : 'text-orange-800'}`}>Troca de Óleo</h4>
-                          <p className={`text-xs mt-1 ${oilAlertColor.includes('red') ? 'text-red-600' : 'text-orange-600'}`}>
-                            {oilAlertRemaining <= 0 ? 'Já passou do momento de trocar o óleo!' : `Faltam apenas ${Math.max(0, oilAlertRemaining).toLocaleString('pt-BR')} KM.`}
-                          </p>
-                          <button onClick={() => { setIsNotificationsOpen(false); setIsSettingsModalOpen(true); setActiveSettingsTab('uber'); }} className={`text-xs underline mt-2 ${oilAlertColor.includes('red') ? 'text-red-700' : 'text-orange-700'}`}>Atualizar Configuração</button>
-                        </div>
-                      </div>
+                    {notifications.length > 0 ? (
+                      notifications.map(notif => {
+                        const Icon = notif.icon;
+                        const colors = {
+                          error: { bg: 'bg-red-50', iconBg: 'bg-red-100', text: 'text-red-600', title: 'text-red-800' },
+                          warning: { bg: 'bg-orange-50', iconBg: 'bg-orange-100', text: 'text-orange-600', title: 'text-orange-800' },
+                          info: { bg: 'bg-blue-50', iconBg: 'bg-blue-100', text: 'text-blue-600', title: 'text-blue-800' },
+                          success: { bg: 'bg-green-50', iconBg: 'bg-green-100', text: 'text-green-600', title: 'text-green-800' }
+                        }[notif.type];
+                        
+                        return (
+                          <div key={notif.id} className={`p-3 rounded-md mb-2 flex items-start space-x-3 ${colors.bg}`}>
+                            <div className={`p-2 rounded-full ${colors.iconBg} ${colors.text}`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className={`text-sm font-bold ${colors.title}`}>{notif.title}</h4>
+                              <p className={`text-xs mt-1 ${colors.text}`}>{notif.description}</p>
+                              {notif.action && (
+                                <button onClick={notif.action} className={`text-xs underline mt-2 ${colors.title}`}>Agir agora</button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
                     ) : (
                       <div className="p-4 text-center text-sm text-gray-400">Nenhuma notificação no momento.</div>
                     )}
@@ -778,7 +871,7 @@ export default function App() {
                             {isPaid ? (
                               <div className="flex flex-col items-center justify-center">
                                 <button onClick={() => openUnpayModal(d)} title="Desfazer Pagamento"><CheckCircle className={`w-5 h-5 mx-auto ${colors.positive}`} /></button>
-                                {d.data_pagamento && <span className="text-[9px] text-[#7A8B76] font-bold mt-1 tracking-widest uppercase block">{d.data_pagamento.split('-').reverse().join('/')}</span>}
+                                {d.data_pagamento && <span className="text-[9px] text-[#7A8B76] font-bold mt-1 tracking-widest uppercase block">{d.data_pagamento.split('T')[0].split('-').reverse().join('/')}</span>}
                               </div>
                             ) : (
                               isSelectionMode ? (
