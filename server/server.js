@@ -63,11 +63,25 @@ async function projectFixedBillsForMonth(mesAno) {
 // ==========================================
 // FUNÇÕES DE FATURA DE CARTÃO
 // ==========================================
-function getInvoiceMonth(dataCompra, numParcela, diaFechamento) {
+function getInvoiceMonth(dataCompra, numParcela, diaFechamento, diaVencimento) {
   const [y, m, d] = dataCompra.split('-').map(Number);
   let baseM = m;
   let baseY = y;
-  if (d >= diaFechamento) baseM += 1;
+  
+  if (diaVencimento < diaFechamento) {
+    if (d >= diaFechamento) {
+      baseM += 2;
+    } else {
+      baseM += 1;
+    }
+  } else {
+    if (d >= diaFechamento) {
+      baseM += 1;
+    } else {
+      baseM += 0;
+    }
+  }
+  
   baseM += numParcela;
   while (baseM > 12) { baseM -= 12; baseY += 1; }
   return `${baseY}-${String(baseM).padStart(2, '0')}`;
@@ -82,7 +96,7 @@ async function getFaturasForMonth(db, mesAno) {
     purchases.forEach(p => {
       const valorParcela = p.amount / p.installments;
       for (let i = 0; i < p.installments; i++) {
-        if (getInvoiceMonth(p.purchase_date, i, card.closing_day) === mesAno) {
+        if (getInvoiceMonth(p.purchase_date, i, card.closing_day, card.due_day) === mesAno) {
           totalInvoice += valorParcela;
         }
       }
@@ -92,14 +106,7 @@ async function getFaturasForMonth(db, mesAno) {
       const statusFatura = invoiceRecord?.status === 'paga' ? 'pago' : 'pendente';
       const dataPagamentoFatura = invoiceRecord?.payment_date || null;
       
-      const vDate = new Date(`${mesAno}-01`);
-      let y = vDate.getFullYear();
-      let m = vDate.getMonth() + 1;
-      if (card.due_day < card.closing_day) {
-        m += 1;
-        if (m > 12) { m -= 12; y += 1; }
-      }
-      const vencimentoStr = `${y}-${String(m).padStart(2, '0')}-${String(card.due_day).padStart(2, '0')}`;
+      const vencimentoStr = `${mesAno}-${String(card.due_day).padStart(2, '0')}`;
       
       faturas.push({
         id: `fatura-${card.id}-${mesAno}`,
@@ -202,9 +209,14 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     const recRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE data LIKE ?", [`${mesAno}%`]);
     const recRecebidasRow = await db.get("SELECT SUM(valor) as total FROM receitas WHERE status = 'recebido' AND data LIKE ?", [`${mesAno}%`]);
     
-    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${mesAno}%`]);
-    const metaUberRow = await db.get("SELECT value FROM settings WHERE key = 'meta_mes_uber'");
-    const metaUber = parseFloat(metaUberRow?.value || 0);
+    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE mes_referencia = ?", [mesAno]);
+    
+    const goalRow = await db.get("SELECT * FROM monthly_goals WHERE mes_ano = ?", [mesAno]);
+    let metaUber = goalRow?.meta_uber;
+    if (metaUber === undefined) {
+      const metaUberRow = await db.get("SELECT value FROM settings WHERE key = 'meta_mes_uber'");
+      metaUber = parseFloat(metaUberRow?.value || 0);
+    }
 
     const todasDespesas = (todasDespesasRow.total || 0) + totalFaturas;
     const despesasPagas = (despPagasRow.total || 0) + faturasPagas;
@@ -214,9 +226,12 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
     const breakEven = Math.max(0, todasDespesas - receitasRecebidas);
 
     // 3. Novo card da direita: Projeção de Sobras
-    // Lê a meta global do usuário (ex: 6000)
-    const metaPessoalRow = await db.get("SELECT value FROM settings WHERE key = 'meta_faturamento_pessoal'");
-    const metaPessoal = parseFloat(metaPessoalRow?.value || 0);
+    // Lê a meta histórica do mês ou cai para a meta global padrão
+    let metaPessoal = goalRow?.meta_pessoal;
+    if (metaPessoal === undefined) {
+      const metaPessoalRow = await db.get("SELECT value FROM settings WHERE key = 'meta_faturamento_pessoal'");
+      metaPessoal = parseFloat(metaPessoalRow?.value || 0);
+    }
     
     // Projeta as receitas como sendo a Meta Global (ou o total já recebido, se ele já bateu a meta)
     const projecaoReceitas = Math.max(receitasRecebidas, metaPessoal);
@@ -240,7 +255,7 @@ app.get('/api/dashboard/:mes_ano', async (req, res) => {
         
         const hDesp = await db.get("SELECT SUM(valor) as total FROM despesas WHERE vencimento LIKE ?", [`${targetMes}%`]);
         const hRec = await db.get("SELECT SUM(valor) as total FROM receitas WHERE data LIKE ?", [`${targetMes}%`]);
-        const hUber = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${targetMes}%`]);
+        const hUber = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE mes_referencia = ?", [targetMes]);
         
         history.push({
             month: `${String(m).padStart(2, '0')}/${y}`,
@@ -285,6 +300,33 @@ app.get('/api/despesas/:mes_ano', async (req, res) => {
     });
 
     res.json(todas);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.get('/api/pending_all', async (req, res) => {
+  try {
+    const db = await openDb();
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    // Pega TODAS as despesas pendentes no BD até hoje, independente do mês
+    const despesas = await db.all("SELECT * FROM despesas WHERE status = 'pendente' AND vencimento <= ? ORDER BY vencimento ASC", [todayStr]);
+    
+    // Pega faturas pendentes. Como faturas são dinâmicas, vamos gerar para o mês atual e anterior
+    const today = new Date();
+    const currMesAno = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    let prevM = today.getMonth();
+    let prevY = today.getFullYear();
+    if (prevM === 0) { prevM = 12; prevY -= 1; }
+    const prevMesAno = `${prevY}-${String(prevM).padStart(2, '0')}`;
+    
+    const faturasCurr = await getFaturasForMonth(db, currMesAno);
+    const faturasPrev = await getFaturasForMonth(db, prevMesAno);
+    
+    const todasFaturas = [...faturasPrev, ...faturasCurr].filter(f => f.status === 'pendente' && f.vencimento <= todayStr);
+    
+    res.json([...despesas, ...todasFaturas]);
   } catch (error) {
     res.status(500).json({ error: 'Erro' });
   }
@@ -364,7 +406,7 @@ app.get('/api/receitas/:mes_ano', async (req, res) => {
     const receitasManuais = await db.all("SELECT * FROM receitas WHERE data LIKE ? ORDER BY data DESC", [`${mesAno}%`]);
     
     // Obter o total do Uber pro mes
-    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE data LIKE ?", [`${mesAno}%`]);
+    const uberRow = await db.get("SELECT SUM(lucro_liquido) as total FROM uber_logs WHERE mes_referencia = ?", [mesAno]);
     const uberTotal = uberRow.total || 0;
 
     res.json({
@@ -418,7 +460,7 @@ app.get('/api/uber_logs', async (req, res) => {
     if (start && end) {
       logs = await db.all("SELECT * FROM uber_logs WHERE data >= ? AND data <= ? ORDER BY data DESC", [start, end]);
     } else if (mes_ano) {
-      logs = await db.all("SELECT * FROM uber_logs WHERE data LIKE ? ORDER BY data DESC", [`${mes_ano}%`]);
+      logs = await db.all("SELECT * FROM uber_logs WHERE mes_referencia = ? ORDER BY data DESC", [mes_ano]);
     } else {
       logs = await db.all("SELECT * FROM uber_logs ORDER BY data DESC");
     }
@@ -431,7 +473,7 @@ app.get('/api/uber_logs', async (req, res) => {
 
 app.post('/api/uber_logs', async (req, res) => {
   try {
-    const { data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
+    const { data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, mes_referencia } = req.body;
     // Cálculo do Lucro Líquido no Backend
     const bruto = parseFloat(valor_bruto) || 0;
     const bns = parseFloat(bonus) || 0;
@@ -447,8 +489,8 @@ app.post('/api/uber_logs', async (req, res) => {
 
     const db = await openDb();
     await db.run(
-      'INSERT INTO uber_logs (data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, lucro_liquido) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [data, aplicativo, corridas, finalKmCalculated, kmIni, kmFin, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido]
+      'INSERT INTO uber_logs (data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, lucro_liquido, mes_referencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [data, aplicativo, corridas, finalKmCalculated, kmIni, kmFin, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido, mes_referencia || null]
     );
     res.json({ success: true, lucro_liquido });
   } catch (error) {
@@ -458,7 +500,7 @@ app.post('/api/uber_logs', async (req, res) => {
 
 app.put('/api/uber_logs/:id', async (req, res) => {
   try {
-    const { data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta } = req.body;
+    const { data, aplicativo, corridas, km, km_inicial, km_final, tempo_online, valor_bruto, combustivel, manutencao, bonus, gorjeta, mes_referencia } = req.body;
     
     const bruto = parseFloat(valor_bruto) || 0;
     const bns = parseFloat(bonus) || 0;
@@ -474,8 +516,8 @@ app.put('/api/uber_logs/:id', async (req, res) => {
 
     const db = await openDb();
     await db.run(
-      'UPDATE uber_logs SET data = ?, aplicativo = ?, corridas = ?, km = ?, km_inicial = ?, km_final = ?, tempo_online = ?, valor_bruto = ?, combustivel = ?, manutencao = ?, bonus = ?, gorjeta = ?, lucro_liquido = ? WHERE id = ?',
-      [data, aplicativo, corridas, finalKmCalculated, kmIni, kmFin, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido, req.params.id]
+      'UPDATE uber_logs SET data = ?, aplicativo = ?, corridas = ?, km = ?, km_inicial = ?, km_final = ?, tempo_online = ?, valor_bruto = ?, combustivel = ?, manutencao = ?, bonus = ?, gorjeta = ?, lucro_liquido = ?, mes_referencia = ? WHERE id = ?',
+      [data, aplicativo, corridas, finalKmCalculated, kmIni, kmFin, tempo_online, bruto, comb, manu, bns, grj, lucro_liquido, mes_referencia || null, req.params.id]
     );
     res.json({ success: true, lucro_liquido });
   } catch (error) {
@@ -540,6 +582,13 @@ app.put('/api/contas_fixas/:id', async (req, res) => {
       'UPDATE contas_fixas SET nome = ?, valor_estimado = ?, dia_vencimento = ?, tipo_valor = ?, parcelas_totais = ?, mes_inicio = ?, categoria = ? WHERE id = ?',
       [nome, valor_estimado, dia_vencimento, tipo_valor, parcelas_totais, mes_inicio, categoria, req.params.id]
     );
+    
+    // Atualiza também as despesas vinculadas a essa conta fixa que ainda estão pendentes
+    await db.run(
+      "UPDATE despesas SET categoria = ?, valor = ? WHERE fixa_id = ? AND status = 'pendente'",
+      [categoria, valor_estimado, req.params.id]
+    );
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro' });
@@ -567,6 +616,26 @@ app.get('/api/cards', async (req, res) => {
   try {
     const db = await openDb();
     const cards = await db.all("SELECT * FROM credit_cards");
+    
+    // Calcular limite utilizado para cada cartão
+    for (let card of cards) {
+      const purchases = await db.all("SELECT * FROM card_purchases WHERE card_id = ?", [card.id]);
+      const invoices = await db.all("SELECT month_year, status FROM card_invoices WHERE card_id = ?", [card.id]);
+      const paidInvoices = new Set(invoices.filter(i => i.status === 'paga').map(i => i.month_year));
+      
+      let usedLimit = 0;
+      purchases.forEach(p => {
+        const valorParcela = p.amount / p.installments;
+        for (let i = 0; i < p.installments; i++) {
+          const invMonth = getInvoiceMonth(p.purchase_date, i, card.closing_day, card.due_day);
+          if (!paidInvoices.has(invMonth)) {
+            usedLimit += valorParcela;
+          }
+        }
+      });
+      card.used_limit = usedLimit;
+    }
+    
     res.json(cards);
   } catch (error) { res.status(500).json({ error: 'Erro' }); }
 });
@@ -622,7 +691,7 @@ app.get('/api/cards/:id/invoice/:mes_ano', async (req, res) => {
     purchases.forEach(p => {
       const valorParcela = p.amount / p.installments;
       for (let i = 0; i < p.installments; i++) {
-        const invMonth = getInvoiceMonth(p.purchase_date, i, card.closing_day);
+        const invMonth = getInvoiceMonth(p.purchase_date, i, card.closing_day, card.due_day);
         if (invMonth === mesAno) {
           totalInvoice += valorParcela;
           invoiceItems.push({
@@ -636,13 +705,80 @@ app.get('/api/cards/:id/invoice/:mes_ano', async (req, res) => {
         }
       }
     });
+    const invoiceRecord = await db.get("SELECT * FROM card_invoices WHERE card_id = ? AND month_year = ?", [card.id, mesAno]);
+    const statusFatura = invoiceRecord?.status === 'paga' ? 'pago' : 'pendente';
+    const dataPagamentoFatura = invoiceRecord?.payment_date || null;
 
     res.json({
       card,
-      mes_ano: mesAno,
       total: totalInvoice,
+      status: statusFatura,
+      payment_date: dataPagamentoFatura,
       items: invoiceItems
     });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.get('/api/cards/total_next_month/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const mesAno = req.params.mes_ano;
+    const [y, m] = mesAno.split('-').map(Number);
+    let targetM = m + 1;
+    let targetY = y;
+    if (targetM > 12) { targetM -= 12; targetY += 1; }
+    const targetMesAno = `${targetY}-${String(targetM).padStart(2, '0')}`;
+    
+    const cards = await db.all("SELECT * FROM credit_cards");
+    let totalAllCards = 0;
+    
+    for (let card of cards) {
+      const purchases = await db.all("SELECT * FROM card_purchases WHERE card_id = ?", [card.id]);
+      purchases.forEach(p => {
+        const valorParcela = p.amount / p.installments;
+        for (let j = 0; j < p.installments; j++) {
+          if (getInvoiceMonth(p.purchase_date, j, card.closing_day, card.due_day) === targetMesAno) {
+            totalAllCards += valorParcela;
+          }
+        }
+      });
+    }
+    
+    res.json({ target_month: targetMesAno, total: totalAllCards });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.get('/api/cards/:id/projection/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const cardId = req.params.id;
+    const mesAno = req.params.mes_ano;
+    const [currY, currM] = mesAno.split('-').map(Number);
+    const result = [];
+    
+    const card = await db.get("SELECT * FROM credit_cards WHERE id = ?", [cardId]);
+    if (!card) return res.status(404).json({ error: 'Not found' });
+    
+    const purchases = await db.all("SELECT * FROM card_purchases WHERE card_id = ?", [cardId]);
+    
+    for (let i = 0; i < 6; i++) {
+      let targetM = currM + i;
+      let targetY = currY;
+      if (targetM > 12) { targetM -= 12; targetY += 1; }
+      const targetMesAno = `${targetY}-${String(targetM).padStart(2, '0')}`;
+      
+      let totalInvoice = 0;
+      purchases.forEach(p => {
+        const valorParcela = p.amount / p.installments;
+        for (let j = 0; j < p.installments; j++) {
+          if (getInvoiceMonth(p.purchase_date, j, card.closing_day, card.due_day) === targetMesAno) {
+            totalInvoice += valorParcela;
+          }
+        }
+      });
+      result.push({ month: targetMesAno, total: totalInvoice });
+    }
+    res.json(result);
   } catch (error) { res.status(500).json({ error: 'Erro' }); }
 });
 
@@ -657,6 +793,26 @@ app.post('/api/cards/:id/purchases', async (req, res) => {
     );
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.put('/api/cards/purchases/:id', async (req, res) => {
+  try {
+    const { description, amount, purchase_date, installments } = req.body;
+    const db = await openDb();
+    await db.run(
+      'UPDATE card_purchases SET description = ?, amount = ?, purchase_date = ?, installments = ? WHERE id = ?',
+      [description, amount, purchase_date, installments, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+app.delete('/api/cards/purchases/:id', async (req, res) => {
+  try {
+    const db = await openDb();
+    await db.run('DELETE FROM card_purchases WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Erro ao excluir compra' }); }
 });
 
 // ==========================================
@@ -707,6 +863,33 @@ app.post('/api/settings', async (req, res) => {
     await db.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', [key, value]);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Erro' }); }
+});
+
+// ==========================================
+// METAS MENSAIS (HISTÓRICO)
+// ==========================================
+app.get('/api/monthly_goals/:mes_ano', async (req, res) => {
+  try {
+    const db = await openDb();
+    const goal = await db.get('SELECT * FROM monthly_goals WHERE mes_ano = ?', [req.params.mes_ano]);
+    res.json(goal || {});
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
+});
+
+app.post('/api/monthly_goals/:mes_ano', async (req, res) => {
+  try {
+    const { meta_pessoal, meta_uber } = req.body;
+    const db = await openDb();
+    await db.run(
+      'INSERT INTO monthly_goals (mes_ano, meta_pessoal, meta_uber) VALUES (?, ?, ?) ON CONFLICT(mes_ano) DO UPDATE SET meta_pessoal = excluded.meta_pessoal, meta_uber = excluded.meta_uber',
+      [req.params.mes_ano, meta_pessoal, meta_uber]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro' });
+  }
 });
 
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));

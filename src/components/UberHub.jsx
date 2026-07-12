@@ -34,6 +34,7 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   }, [activeTab]);
   
   // FILTER STATE
+  const [shiftToNextMonth, setShiftToNextMonth] = useState(() => localStorage.getItem('uberhub_shiftToNextMonth') === 'true');
   const [uberLogs, setUberLogs] = useState([]);
   const [filterType, setFilterType] = useState('month'); // 'month', 'range', 'all'
   const [localMonth, setLocalMonth] = useState(globalMonth);
@@ -191,21 +192,34 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
       evolData, barData, scatterData
     };
   }, [uberLogs]);
+  useEffect(() => {
+    localStorage.setItem('uberhub_shiftToNextMonth', shiftToNextMonth);
+  }, [shiftToNextMonth]);
 
   // ACTIONS
   const handleSave = async (e) => {
     e.preventDefault();
+    
+    let mes_ref = form.data.substring(0, 7);
+    if (shiftToNextMonth) {
+      const dateObj = new Date(form.data + 'T00:00:00');
+      dateObj.setMonth(dateObj.getMonth() + 1);
+      mes_ref = dateObj.toISOString().substring(0, 7);
+    }
+    
+    const payload = { ...form, mes_referencia: mes_ref };
+
     if(editingId) {
       await fetch(`/api/uber_logs/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
+        body: JSON.stringify(payload)
       });
     } else {
       await fetch('/api/uber_logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
+        body: JSON.stringify(payload)
       });
     }
     setEditingId(null);
@@ -374,22 +388,35 @@ export default function UberHub({ fetchGlobalData, colors, formatCurrency, globa
   return (
     <div className="space-y-6">
       
-      {/* TABS */}
-      <div className="flex border-b border-gray-200 mb-8">
-        <button 
-          onClick={() => setActiveTab('performance')} 
-          className={`px-6 py-4 font-medium text-sm transition-all relative ${activeTab === 'performance' ? 'text-[#C87941]' : 'text-gray-500 hover:text-gray-800'}`}
-        >
-          Painel de Performance
-          {activeTab === 'performance' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#C87941]"></div>}
-        </button>
-        <button 
-          onClick={() => setActiveTab('registro')} 
-          className={`px-6 py-4 font-medium text-sm transition-all relative ${activeTab === 'registro' ? 'text-[#C87941]' : 'text-gray-500 hover:text-gray-800'}`}
-        >
-          Registro de Jornada
-          {activeTab === 'registro' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#C87941]"></div>}
-        </button>
+      {/* TABS E OPÇÕES */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-200 mb-8 gap-4 pb-0">
+        <div className="flex">
+          <button 
+            onClick={() => setActiveTab('performance')} 
+            className={`px-6 py-4 font-medium text-sm transition-all relative ${activeTab === 'performance' ? 'text-[#C87941]' : 'text-gray-500 hover:text-gray-800'}`}
+          >
+            Painel de Performance
+            {activeTab === 'performance' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#C87941]"></div>}
+          </button>
+          <button 
+            onClick={() => setActiveTab('registro')} 
+            className={`px-6 py-4 font-medium text-sm transition-all relative ${activeTab === 'registro' ? 'text-[#C87941]' : 'text-gray-500 hover:text-gray-800'}`}
+          >
+            Registro de Jornada
+            {activeTab === 'registro' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-[#C87941]"></div>}
+          </button>
+        </div>
+        
+        {/* Toggle Mês Seguinte */}
+        <div className="flex items-center space-x-3 sm:pb-2">
+          <span className="text-sm font-medium text-gray-700">Direcionar para o mês seguinte:</span>
+          <button 
+            onClick={() => setShiftToNextMonth(!shiftToNextMonth)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#C87941] focus:ring-offset-2 ${shiftToNextMonth ? 'bg-[#C87941]' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${shiftToNextMonth ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
       </div>
 
       {/* FILTER BAR */}

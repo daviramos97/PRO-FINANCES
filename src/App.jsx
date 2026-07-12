@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wallet, LayoutDashboard, Car, AlertTriangle, Settings, Calendar, 
-  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut
+  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut, Search
 } from 'lucide-react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import 'chart.js/auto';
@@ -22,6 +22,8 @@ export default function App() {
   // Estado dos Dados
   const [dashboard, setDashboard] = useState({ comprometido: 0, realizado: 0, sobras: 0, receitasRecebidas: 0, despesasPagas: 0 });
   const [despesas, setDespesas] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [globalPending, setGlobalPending] = useState([]);
   const [cards, setCards] = useState([]);
   const [selectedPayables, setSelectedPayables] = useState([]);
   const [deleteReceitaId, setDeleteReceitaId] = useState(null);
@@ -58,6 +60,13 @@ export default function App() {
 
   const [isNewFixaModal, setIsNewFixaModal] = useState(false);
   const [newFixaForm, setNewFixaForm] = useState({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO' });
+  // Computed default category based on settings
+  const defaultCategoria = settings.categorias_despesas ? settings.categorias_despesas.split(',')[0].trim() : 'Outros';
+
+  const [monthlyGoal, setMonthlyGoal] = useState({});
+  const [isEditGoalModalOpen, setIsEditGoalModalOpen] = useState(false);
+  const [editGoalValue, setEditGoalValue] = useState('');
+
   const [isDeleteFixaModalOpen, setIsDeleteFixaModalOpen] = useState(false);
   const [fixaToDelete, setFixaToDelete] = useState(null);
 
@@ -75,6 +84,9 @@ export default function App() {
       });
       setDespesas(sorted);
     }).catch(console.error);
+    fetch(`/api/pending_all`).then(res => res.json()).then(data => {
+      if (Array.isArray(data)) setGlobalPending(data);
+    }).catch(console.error);
     fetch(`/api/receitas/${filterMonth}`).then(res => res.json()).then(setReceitas).catch(console.error);
     fetch(`/api/contas_fixas`).then(res => res.json()).then(setContasFixas).catch(console.error);
     fetch(`/api/cards`).then(res => res.json()).then(setCards).catch(console.error);
@@ -90,6 +102,7 @@ export default function App() {
         data: data.map(r => r.total)
       });
     }).catch(console.error);
+    fetch(`/api/monthly_goals/${filterMonth}`).then(res => res.json()).then(data => setMonthlyGoal(data)).catch(console.error);
   };
   useEffect(() => {
     fetchData();
@@ -175,7 +188,7 @@ export default function App() {
 
   const openNewDespesaModal = () => {
     setEditingDespesaId(null);
-    setNewDespesaForm({ nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: 'Outros', forma_pagamento: 'Dinheiro' });
+    setNewDespesaForm({ nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: defaultCategoria, forma_pagamento: 'Dinheiro' });
     setIsNewDespesaModal(true);
   };
 
@@ -208,7 +221,7 @@ export default function App() {
       });
     }
     setIsNewDespesaModal(false);
-    setNewDespesaForm({ nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: 'Outros', forma_pagamento: 'Dinheiro' });
+    setNewDespesaForm({ nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: defaultCategoria, forma_pagamento: 'Dinheiro' });
     fetchData();
   };
 
@@ -264,7 +277,7 @@ export default function App() {
 
   const openNewFixaModal = () => {
     setEditingFixaId(null);
-    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', parcelas_totais: '', mes_inicio: filterMonth, categoria: 'Outros', valor_entrada: '' });
+    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', parcelas_totais: '', mes_inicio: filterMonth, categoria: defaultCategoria, valor_entrada: '' });
     setIsNewFixaModal(true);
   };
 
@@ -277,7 +290,7 @@ export default function App() {
       tipo_valor: fixa.tipo_valor,
       parcelas_totais: fixa.parcelas_totais || '',
       mes_inicio: fixa.mes_inicio || '',
-      categoria: fixa.categoria || 'Outros',
+      categoria: fixa.categoria || defaultCategoria,
       valor_entrada: ''
     });
     setIsNewFixaModal(true);
@@ -300,7 +313,7 @@ export default function App() {
       });
     }
     setIsNewFixaModal(false);
-    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', categoria: 'Outros', valor_entrada: '' });
+    setNewFixaForm({ nome: '', valor_estimado: '', dia_vencimento: 10, tipo_valor: 'FIXO', categoria: defaultCategoria, valor_entrada: '' });
     fetchData();
   };
   const handleDeleteFixa = (id) => {
@@ -330,6 +343,18 @@ export default function App() {
     fetchData();
     showToast("Configurações salvas com sucesso!");
     setTimeout(() => setIsSettingsModalOpen(false), 1500);
+  };
+
+  const handleSaveGoal = async (e) => {
+    e.preventDefault();
+    await fetch(`/api/monthly_goals/${filterMonth}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meta_pessoal: editGoalValue, meta_uber: monthlyGoal.meta_uber || settings.meta_mes_uber })
+    });
+    fetchData();
+    setIsEditGoalModalOpen(false);
+    showToast(`Meta de ${filterMonth.split('-').reverse().join('/')} salva!`);
   };
 
   const TagInput = ({ value, onChange, placeholder }) => {
@@ -379,8 +404,8 @@ export default function App() {
   const despesasTotaisMes = despesas.reduce((acc, curr) => acc + curr.valor, 0); 
   const uberLucroMes = receitas.uber_total;
 
-  const metaPessoal = parseFloat(settings.meta_faturamento_pessoal) || 5000;
-  const metaUber = parseFloat(settings.meta_mes_uber) || 2500;
+  const metaPessoal = monthlyGoal.meta_pessoal ?? (parseFloat(settings.meta_faturamento_pessoal) || 5000);
+  const metaUber = monthlyGoal.meta_uber ?? (parseFloat(settings.meta_mes_uber) || 2500);
 
   // Cálculos Dinâmicos Uber
   const jornadaSemanalUber = parseInt(settings.jornada_semanal_uber) || 5;
@@ -423,6 +448,10 @@ export default function App() {
       borderWidth: 1, borderColor: '#fff'
     }]
   };
+
+  const topCategories = Object.entries(despesasPorCategoria)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   
@@ -475,22 +504,21 @@ export default function App() {
     const todayStr = today.toISOString().split('T')[0];
     const todayDay = today.getDate();
 
-    // 1. Contas Atrasadas e Vencendo Hoje
-    despesas.forEach(d => {
-      if (d.status === 'pendente') {
-        if (d.vencimento < todayStr) {
-          notifs.push({
-            id: `atraso-${d.id}`, type: 'error', icon: AlertTriangle,
-            title: 'Conta Atrasada',
-            description: `${d.nome} (R$ ${d.valor.toFixed(2)}) venceu dia ${d.vencimento.split('-').reverse().join('/')}.`
-          });
-        } else if (d.vencimento === todayStr) {
-          notifs.push({
-            id: `hoje-${d.id}`, type: 'warning', icon: Calendar,
-            title: 'Vencimento Hoje',
-            description: `${d.nome} vence hoje! Valor: R$ ${d.valor.toFixed(2)}.`
-          });
-        }
+    // 1. Contas Atrasadas e Vencendo Hoje (Usando globalPending para não depender do filterMonth)
+    (Array.isArray(globalPending) ? globalPending : []).forEach(d => {
+      if (!d.vencimento) return;
+      if (d.vencimento < todayStr) {
+        notifs.push({
+          id: `atraso-${d.id}`, type: 'error', icon: AlertTriangle,
+          title: 'Conta Atrasada',
+          description: `${d.nome} (R$ ${d.valor.toFixed(2)}) venceu dia ${d.vencimento.split('-').reverse().join('/')}.`
+        });
+      } else if (d.vencimento === todayStr) {
+        notifs.push({
+          id: `hoje-${d.id}`, type: 'warning', icon: Calendar,
+          title: 'Vencimento Hoje',
+          description: `${d.nome} vence hoje! Valor: R$ ${d.valor.toFixed(2)}.`
+        });
       }
     });
 
@@ -541,7 +569,7 @@ export default function App() {
     }
 
     return notifs;
-  }, [despesas, settings, dashboard, cards, reliefDataState, receitas]);
+  }, [globalPending, settings, dashboard, cards, reliefDataState, receitas]);
 
   return (
     <div className={`flex h-screen w-full ${colors.bg} overflow-hidden text-gray-800 font-sans`}>
@@ -702,6 +730,26 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Edit Goal Modal */}
+                {isEditGoalModalOpen && (
+                  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-slide-up">
+                      <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-light text-gray-800">Editar Meta ({filterMonth.split('-').reverse().join('/')})</h2>
+                        <button onClick={() => setIsEditGoalModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X className="w-5 h-5 text-gray-400" /></button>
+                      </div>
+                      <form onSubmit={handleSaveGoal} className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Meta de Faturamento (R$)</label>
+                          <input type="number" step="0.01" value={editGoalValue} onChange={e => setEditGoalValue(e.target.value)} className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C87941]/50 bg-gray-50" required />
+                          <p className="text-xs text-gray-400 mt-2">Esta alteração afeta apenas o mês de {filterMonth.split('-').reverse().join('/')}, preservando seu histórico passado.</p>
+                        </div>
+                        <button type="submit" className="w-full py-3 bg-[#C87941] text-white rounded-lg font-medium hover:bg-[#b06a39] shadow-md transition-all">Salvar Meta</button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {/* Zero a Zero */}
                 <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center">
                   <h3 className="text-lg font-medium text-gray-800 mb-2">Equalização</h3>
@@ -749,7 +797,10 @@ export default function App() {
                 {/* Meta Faturamento Pessoal */}
                 <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center relative">
                   <h3 className="text-lg font-medium text-gray-800 mb-1 w-full text-left">Faturamento Pessoal (Davi)</h3>
-                  <p className="text-sm text-gray-400 mb-4 w-full text-left">Meta: {formatCurrency(metaPessoal)}</p>
+                  <div className="flex items-center justify-between w-full mb-4">
+                    <p className="text-sm text-gray-400">Meta: {formatCurrency(metaPessoal)}</p>
+                    <button onClick={() => { setEditGoalValue(metaPessoal); setIsEditGoalModalOpen(true); }} className="text-gray-400 hover:text-[#C87941] p-1"><Edit3 className="w-4 h-4" /></button>
+                  </div>
                   <div className="w-32 h-32 relative">
                     <Doughnut data={personalDonut} options={{ cutout: '75%', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
                     <div className="absolute inset-0 flex items-center justify-center flex-col">
@@ -764,13 +815,31 @@ export default function App() {
                 {/* Gráfico de Categorias */}
                 <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center relative">
                   <h3 className="text-lg font-medium text-gray-800 mb-4 w-full text-left">Despesas por Categoria</h3>
-                  <div className="w-48 h-48 relative">
+                  <div className="w-48 h-48 relative mb-6">
                     {Object.keys(despesasPorCategoria).length > 0 ? (
                       <Doughnut data={categoryDonut} options={{ maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } } }} />
                     ) : (
                       <div className="flex items-center justify-center w-full h-full text-gray-300 text-xs text-center">Nenhuma despesa</div>
                     )}
                   </div>
+                  {topCategories.length > 0 && (
+                    <div className="w-full space-y-3">
+                      {topCategories.map(([cat, val]) => {
+                        const colors = ['#2D2A26', '#C87941', '#7A8B76', '#A35C5C', '#E8C872', '#4B6584', '#8854D0', '#D1D5DB'];
+                        const originalIdx = Object.keys(despesasPorCategoria).indexOf(cat);
+                        const color = colors[originalIdx % colors.length];
+                        return (
+                          <div key={cat} className="flex justify-between items-center text-sm px-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: color }}></div>
+                              <span className="text-gray-600 truncate max-w-[140px] font-light">{cat}</span>
+                            </div>
+                            <span className="font-medium text-gray-800">{formatCurrency(val)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Projeção de Alívio */}
@@ -817,16 +886,28 @@ export default function App() {
           {/* CONTAS A PAGAR */}
           {currentPage === 'payables' && (
             <div className="space-y-6 animate-fade-in">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
                   <p className="text-gray-500 font-light">Gerencie suas despesas pendentes e pagas do mês.</p>
                   <p className="text-2xl font-bold text-[#A35C5C] mt-1">Total: {formatCurrency(despesas.reduce((acc, d) => acc + d.valor, 0))}</p>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedPayables([]); }} className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide">
-                    {isSelectionMode ? 'Cancelar Seleção' : 'Selecionar'}
-                  </button>
-                  <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                    <input 
+                      type="text" 
+                      placeholder="Pesquisar conta..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:ring-1 focus:ring-[#C87941] w-full sm:w-64 transition-all shadow-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedPayables([]); }} className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide">
+                      {isSelectionMode ? 'Cancelar Seleção' : 'Selecionar'}
+                    </button>
+                    <button onClick={openNewDespesaModal} className={`${colors.action} text-white px-6 py-2.5 rounded-md font-medium shadow-sm transition-all text-sm tracking-wide`}>+ Nova Despesa</button>
+                  </div>
                 </div>
               </div>
 
@@ -863,7 +944,10 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {despesas.map(d => {
+                    {(Array.isArray(despesas) ? despesas : []).filter(d => 
+                      String(d.nome || '').toLowerCase().includes(String(searchQuery || '').toLowerCase()) || 
+                      String(d.categoria || '').toLowerCase().includes(String(searchQuery || '').toLowerCase())
+                    ).map(d => {
                       const isPaid = d.status === 'pago';
                       return (
                         <tr key={d.id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isPaid ? 'opacity-50' : ''}`}>
@@ -929,9 +1013,9 @@ export default function App() {
                   </thead>
                   <tbody>
                     <tr className="border-b-2 border-gray-100 bg-[#7A8B76]/5">
-                      <td className="py-5 px-6 text-sm text-gray-600 font-medium">Mês de {filterMonth}</td>
+                      <td className="py-5 px-6 text-sm text-gray-600 font-medium capitalize">{new Date(filterMonth + '-01T00:00:00').toLocaleString('pt-BR', { month: 'long' })}</td>
                       <td className="py-5 px-6 font-bold text-gray-800 flex items-center">
-                        <Car className={`w-5 h-5 mr-3 ${colors.positive}`} /> Total Lucro Uber Hub 
+                        <Car className={`w-5 h-5 mr-3 ${colors.positive}`} /> Uber 
                         <span className="ml-3 text-xs bg-white border border-gray-200 text-gray-500 px-2 py-1 rounded shadow-sm font-normal">Automático</span>
                       </td>
                       <td className={`py-5 px-6 text-right font-bold ${colors.positive}`}>{formatCurrency(receitas.uber_total)}</td>

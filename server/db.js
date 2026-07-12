@@ -156,4 +156,15 @@ export async function setupDb() {
   // Novas migrations para Controle de KM
   try { await db.exec("ALTER TABLE uber_logs ADD COLUMN km_inicial REAL DEFAULT 0"); } catch(e) { /* ignore */ }
   try { await db.exec("ALTER TABLE uber_logs ADD COLUMN km_final REAL DEFAULT 0"); } catch(e) { /* ignore */ }
+
+  // Migrations para Mês de Referência Uber e Metas Históricas
+  try { await db.exec("ALTER TABLE uber_logs ADD COLUMN mes_referencia TEXT DEFAULT NULL"); } catch(e) { /* ignore */ }
+  
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS monthly_goals (
+      mes_ano TEXT PRIMARY KEY,
+      meta_pessoal REAL,
+      meta_uber REAL
+    )
+  `);
 }
