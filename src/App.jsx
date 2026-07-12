@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wallet, LayoutDashboard, Car, AlertTriangle, Settings, Calendar, 
-  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut, Search
+  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut, Search, FileText
 } from 'lucide-react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import 'chart.js/auto';
 import UberHub from './components/UberHub';
 import CardsHub from './components/CardsHub';
+import ReportsHub from './components/ReportsHub';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState(() => localStorage.getItem('profinances_currentPage') || 'dashboard');
@@ -38,7 +39,26 @@ export default function App() {
   const [activeSettingsTab, setActiveSettingsTab] = useState('geral');
   const [toast, setToast] = useState(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [dismissedNotifs, setDismissedNotifs] = useState(() => JSON.parse(localStorage.getItem('dismissedNotifs') || '[]'));
 
+  const handleDismissNotif = (id, e) => {
+    if (e) {
+      e.stopPropagation(); // Evita acionar a action da notificação se clicar no X
+    }
+    const newD = [...dismissedNotifs, id];
+    setDismissedNotifs(newD);
+    localStorage.setItem('dismissedNotifs', JSON.stringify(newD));
+  };
+
+  const handleDismissAllNotifs = () => {
+    // Para limpar todas, pegamos as atuais (que já excluem as dismissed, mas vamos somar tudo na key de ignoradas para manter histórico seguro)
+    // Para simplificar, vou dar setDismissedNotifs pra incluir as da view atual
+    setDismissedNotifs(prev => {
+       const currIds = document.querySelectorAll('[data-notif-id]'); // hackzinho limpo não precisamos
+       return prev;
+    });
+  }; // vou implementar melhor ali embaixo no jsx
+  
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(null), 3000);
@@ -76,11 +96,11 @@ export default function App() {
       const sorted = [...data].sort((a, b) => {
         if (a.status !== b.status) return a.status === 'pendente' ? -1 : 1;
         if (a.status === 'pendente') return a.vencimento.localeCompare(b.vencimento);
-        const dateA = a.data_pagamento || a.vencimento;
-        const dateB = b.data_pagamento || b.vencimento;
+        const dateA = a.data_pagamento || '1970-01-01T00:00:00';
+        const dateB = b.data_pagamento || '1970-01-01T00:00:00';
         const cmp = dateB.localeCompare(dateA);
         if (cmp !== 0) return cmp;
-        return b.id - a.id; // Desempate para garantir que a última alterada fique no topo se as datas forem exatas
+        return String(b.id).localeCompare(String(a.id)); // Desempate seguro para IDs que são string (ex: faturas)
       });
       setDespesas(sorted);
     }).catch(console.error);
@@ -504,20 +524,23 @@ export default function App() {
     const todayStr = today.toISOString().split('T')[0];
     const todayDay = today.getDate();
 
-    // 1. Contas Atrasadas e Vencendo Hoje (Usando globalPending para não depender do filterMonth)
+    // 1. Contas Atrasadas e Vencendo Hoje
     (Array.isArray(globalPending) ? globalPending : []).forEach(d => {
       if (!d.vencimento) return;
+      const navMonth = d.vencimento.substring(0, 7);
       if (d.vencimento < todayStr) {
         notifs.push({
           id: `atraso-${d.id}`, type: 'error', icon: AlertTriangle,
           title: 'Conta Atrasada',
-          description: `${d.nome} (R$ ${d.valor.toFixed(2)}) venceu dia ${d.vencimento.split('-').reverse().join('/')}.`
+          description: `${d.nome} (R$ ${d.valor.toFixed(2)}) venceu dia ${d.vencimento.split('-').reverse().join('/')}.`,
+          action: () => { setIsNotificationsOpen(false); setFilterMonth(navMonth); setCurrentPage('payables'); }
         });
       } else if (d.vencimento === todayStr) {
         notifs.push({
           id: `hoje-${d.id}`, type: 'warning', icon: Calendar,
           title: 'Vencimento Hoje',
-          description: `${d.nome} vence hoje! Valor: R$ ${d.valor.toFixed(2)}.`
+          description: `${d.nome} vence hoje! Valor: R$ ${d.valor.toFixed(2)}.`,
+          action: () => { setIsNotificationsOpen(false); setFilterMonth(navMonth); setCurrentPage('payables'); }
         });
       }
     });
@@ -543,7 +566,8 @@ export default function App() {
         notifs.push({
           id: `card-${card.id}`, type: 'info', icon: CreditCard,
           title: 'Fatura Fechada',
-          description: `A fatura do seu cartão ${card.name} fechou hoje.`
+          description: `A fatura do seu cartão ${card.name} fechou hoje.`,
+          action: () => { setIsNotificationsOpen(false); setCurrentPage('cartoes'); }
         });
       }
     });
@@ -553,23 +577,25 @@ export default function App() {
       notifs.push({
         id: 'projecao', type: 'error', icon: TrendingDown,
         title: 'Projeção no Vermelho',
-        description: 'Suas despesas fixas + faturas já ultrapassaram a renda prevista do mês atual.'
+        description: 'Suas despesas fixas + faturas já ultrapassaram a renda prevista do mês atual.',
+        action: () => { setIsNotificationsOpen(false); setCurrentPage('dashboard'); }
       });
     }
-
+    
     // 5. Meta do Uber Atingida (Mensal)
     const metaUber = parseFloat(settings.meta_uber || 0);
     const uberLucro = receitas.uber_total || 0;
     if (metaUber > 0 && uberLucro >= metaUber) {
       notifs.push({
         id: 'meta-uber', type: 'success', icon: Trophy,
-        title: 'Meta do Uber Atingida! 🎉',
-        description: `Você bateu a meta mensal de R$ ${metaUber.toFixed(2)}.`
+        title: 'Meta do Uber Atingida! 🏆',
+        description: `Você bateu a meta mensal de R$ ${metaUber.toFixed(2)}.`,
+        action: () => { setIsNotificationsOpen(false); setCurrentPage('uber'); }
       });
     }
 
-    return notifs;
-  }, [globalPending, settings, dashboard, cards, reliefDataState, receitas]);
+    return notifs.filter(n => !dismissedNotifs.includes(n.id));
+  }, [globalPending, settings, dashboard, cards, reliefDataState, receitas, dismissedNotifs]);
 
   return (
     <div className={`flex h-screen w-full ${colors.bg} overflow-hidden text-gray-800 font-sans`}>
@@ -604,6 +630,10 @@ export default function App() {
             <Calendar className="w-5 h-5 mr-4 opacity-70" />
             <span className="font-medium text-sm tracking-wide">Contas Fixas</span>
           </button>
+          <button onClick={() => setCurrentPage('reports')} className={`w-full flex items-center px-4 py-3 rounded-md transition-all ${currentPage === 'reports' ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+            <FileText className="w-5 h-5 mr-4 opacity-70" />
+            <span className="font-medium text-sm tracking-wide">Relatórios PDF</span>
+          </button>
         </nav>
         
         <div className="px-4 py-6 mt-auto border-t border-white/5">
@@ -629,6 +659,7 @@ export default function App() {
               {currentPage === 'fixed' && 'Configurar Contas Fixas'}
               {currentPage === 'uber' && 'Uber Hub - Frota & Corridas'}
               {currentPage === 'cartoes' && 'Gestão de Cartões'}
+              {currentPage === 'reports' && 'Relatórios e Exportação'}
             </h1>
           </div>
 
@@ -651,7 +682,16 @@ export default function App() {
                 <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden animate-fade-in">
                   <div className="p-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                     <span className="text-sm font-semibold text-gray-700">Notificações</span>
-                    {notifications.length > 0 && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">{notifications.length} Novas</span>}
+                    {notifications.length > 0 && (
+                      <div className="flex items-center space-x-3">
+                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">{notifications.length} Novas</span>
+                        <button onClick={() => {
+                          const newD = [...dismissedNotifs, ...notifications.map(n => n.id)];
+                          setDismissedNotifs(newD);
+                          localStorage.setItem('dismissedNotifs', JSON.stringify(newD));
+                        }} className="text-xs text-gray-400 hover:text-gray-800 underline">Limpar todas</button>
+                      </div>
+                    )}
                   </div>
                   <div className="max-h-64 overflow-y-auto p-2">
                     {notifications.length > 0 ? (
@@ -665,17 +705,28 @@ export default function App() {
                         }[notif.type];
                         
                         return (
-                          <div key={notif.id} className={`p-3 rounded-md mb-2 flex items-start space-x-3 ${colors.bg}`}>
+                          <div 
+                            key={notif.id} 
+                            onClick={notif.action}
+                            className={`p-3 rounded-md mb-2 flex items-start space-x-3 ${colors.bg} ${notif.action ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''} group relative`}
+                          >
                             <div className={`p-2 rounded-full ${colors.iconBg} ${colors.text}`}>
                               <Icon className="w-4 h-4" />
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 pr-4">
                               <h4 className={`text-sm font-bold ${colors.title}`}>{notif.title}</h4>
                               <p className={`text-xs mt-1 ${colors.text}`}>{notif.description}</p>
                               {notif.action && (
-                                <button onClick={notif.action} className={`text-xs underline mt-2 ${colors.title}`}>Agir agora</button>
+                                <span className={`text-[10px] uppercase tracking-wider font-bold mt-2 inline-block ${colors.title}`}>Resolver Agora &rarr;</span>
                               )}
                             </div>
+                            <button 
+                              onClick={(e) => handleDismissNotif(notif.id, e)} 
+                              className={`absolute top-2 right-2 p-1 text-gray-400 hover:${colors.text} opacity-0 group-hover:opacity-100 transition-opacity`}
+                              title="Limpar notificação"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
                           </div>
                         );
                       })
@@ -1080,6 +1131,12 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+          
+          {currentPage === 'reports' && (
+            <div className="animate-fade-in">
+              <ReportsHub globalSettings={settings} globalDashboard={dashboard} globalReliefData={reliefDataState} />
             </div>
           )}
         </div>
