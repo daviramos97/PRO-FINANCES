@@ -4,7 +4,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Line } from 'react-chartjs-2';
 
-const ReportsHub = ({ globalSettings, globalDashboard, globalReliefData }) => {
+const ReportsHub = ({ globalSettings, globalDashboard, globalReliefData, formatCurrency }) => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewData, setPreviewData] = useState(null);
@@ -37,10 +37,6 @@ const ReportsHub = ({ globalSettings, globalDashboard, globalReliefData }) => {
     };
     fetchPreview();
   }, [selectedMonth]);
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-  };
 
   const generatePDF = () => {
     if (!previewData) return;

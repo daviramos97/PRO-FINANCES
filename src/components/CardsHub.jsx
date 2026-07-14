@@ -3,7 +3,7 @@ import { CreditCard, Plus, Edit3, Trash2, Settings, ArrowRight } from 'lucide-re
 import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
 
-export default function CardsHub({ filterMonth }) {
+export default function CardsHub({ filterMonth, fetchGlobalData, colors, formatCurrency }) {
   const [cards, setCards] = useState([]);
   const [selectedCardId, setSelectedCardId] = useState(() => {
     const saved = localStorage.getItem('profinances_selectedCardId');
@@ -13,7 +13,6 @@ export default function CardsHub({ filterMonth }) {
   const [projectionData, setProjectionData] = useState([]);
   const [nextMonthTotal, setNextMonthTotal] = useState({ month: '', total: 0 });
   const [invoiceMonth, setInvoiceMonth] = useState(filterMonth);
-  const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   
   // Modals
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);

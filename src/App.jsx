@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wallet, LayoutDashboard, Car, AlertTriangle, Settings, Calendar, 
-  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut, Search, FileText
+  ChevronDown, Bell, CheckCircle, Trash2, List, TrendingUp, TrendingDown, Edit3, X, ArrowRightLeft, CreditCard, Trophy, LogOut, Search, FileText, Eye, EyeOff
 } from 'lucide-react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import 'chart.js/auto';
@@ -11,10 +11,15 @@ import ReportsHub from './components/ReportsHub';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState(() => localStorage.getItem('profinances_currentPage') || 'dashboard');
+  const [isCensored, setIsCensored] = useState(() => JSON.parse(localStorage.getItem('profinances_isCensored') || 'false'));
 
   useEffect(() => {
     localStorage.setItem('profinances_currentPage', currentPage);
   }, [currentPage]);
+  
+  useEffect(() => {
+    localStorage.setItem('profinances_isCensored', JSON.stringify(isCensored));
+  }, [isCensored]);
   
   // Filtro de Mês Global
   const today = new Date();
@@ -407,7 +412,10 @@ export default function App() {
     );
   };
 
-  const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+  const formatCurrency = (val) => {
+    if (isCensored) return 'R$ *****';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+  };
   
   // Paleta Terrosa
   const colors = {
@@ -601,8 +609,11 @@ export default function App() {
     <div className={`flex h-screen w-full ${colors.bg} overflow-hidden text-gray-800 font-sans`}>
       {/* SIDEBAR MINIMALISTA */}
       <aside className={`w-64 ${colors.sidebar} flex flex-col z-10 transition-all`}>
-        <div className="h-20 flex items-center px-8">
+        <div className="h-20 flex items-center justify-between px-6 border-b border-white/5">
           <span className="text-white font-light text-xl tracking-widest uppercase">PRO <span className="font-bold text-[#C87941]">Finances</span></span>
+          <button onClick={() => setIsCensored(!isCensored)} className="text-gray-400 hover:text-white transition p-1 rounded-full hover:bg-white/10" title="Ocultar valores">
+            {isCensored ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          </button>
         </div>
         
         <nav className="flex-1 px-4 py-8 space-y-1">
@@ -928,7 +939,12 @@ export default function App() {
           {/* CARTÕES HUB */}
           {currentPage === 'cartoes' && (
             <div className="animate-fade-in">
-              <CardsHub filterMonth={filterMonth} />
+              <CardsHub 
+                filterMonth={filterMonth} 
+                fetchGlobalData={fetchData} 
+                colors={colors} 
+                formatCurrency={formatCurrency} 
+              />
             </div>
           )}
 
@@ -1136,7 +1152,12 @@ export default function App() {
           
           {currentPage === 'reports' && (
             <div className="animate-fade-in">
-              <ReportsHub globalSettings={settings} globalDashboard={dashboard} globalReliefData={reliefDataState} />
+              <ReportsHub 
+                globalSettings={settings} 
+                globalDashboard={dashboard} 
+                globalReliefData={reliefDataState} 
+                formatCurrency={formatCurrency}
+              />
             </div>
           )}
         </div>
